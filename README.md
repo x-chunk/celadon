@@ -69,6 +69,7 @@ celadon auth token           # print the key, for another program
 | Vault      | `vault store`, `reveal`, `rename`, `codes`, `recover`, `delete` |
 | Shortcuts  | `actions list`, `view`, `create`, `edit`, `delete`, `placeholders` |
 | Settings   | `settings`, `settings retention`, `vault`, `actions`, `language` |
+| Deployment | `admin login`, `status`, `reference`, `campaigns …`, `codes …`, `admin tui` |
 | Other      | `auth …`, `tui`, `completion`, `version` |
 
 `celadon <command> --help` documents each one, and `man celadon-<command>`
@@ -125,6 +126,24 @@ celadon settings language --auto
 A settings command without flags reads; with flags it writes only what was
 given — `--ttl off` switches the window off, leaving `--ttl` out leaves it
 alone.
+
+### Administering a deployment
+
+With the deployment's `ADMIN_TOKEN`, `celadon admin` manages its promotions:
+campaigns everybody gets and promo codes whoever redeems them gets.
+
+```sh
+celadon admin login --base-url https://aether.example.com
+celadon admin reference                      # plans, quotas and amounts by their API names
+celadon admin campaigns create --kind event --name "Summer week" \
+  --starts 2026-10-01 --for 7d --discount pro:25 --bonus 50:20
+celadon admin codes create SUMMER25 --name "Summer sale" --max 100 --lasts 30d --discount all:25
+celadon admin tui                            # the same, full screen
+```
+
+The token is kept in `~/.celadon/admin/<profile>`, beside the profile, and a
+profile may hold one without an application key. See
+[docs/admin.md](docs/admin.md).
 
 ## The interface
 

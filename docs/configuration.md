@@ -8,9 +8,11 @@ Everything celadon keeps is under one directory: `~/.celadon`, or
 ```text
 ~/.celadon/
 ├── config.toml        profiles and the default one — nothing secret
-└── keys/              mode 0700
-    ├── default        one application key per file, mode 0600
-    └── work
+├── keys/              mode 0700
+│   ├── default        one application key per file, mode 0600
+│   └── work
+└── admin/             mode 0700
+    └── ops            one deployment ADMIN_TOKEN per file, mode 0600
 ```
 
 `config.toml` looks like this, and is safe to open, share or sync:
@@ -29,6 +31,10 @@ key_prefix = "aek_AbCdEfGh"
 [profiles.work]
 base_url = "https://aether.example.com"
 auth_header = "x-aether-key"
+
+[profiles.ops]
+base_url = "https://aether.example.com"
+admin_base_url = "https://internal.example.com"
 ```
 
 `app_id`, `app_name` and `key_prefix` are what the key opened when it was
@@ -36,8 +42,17 @@ stored, so `auth status --offline` can say which application a profile is
 without a request. `auth_header` is how the key is sent: `bearer` (the
 default, `Authorization: Bearer …`), `bare` (`Authorization: …`) or
 `x-aether-key` (`X-Aether-Key: …`), for a network that strips `Authorization`.
+`admin_base_url` is where the admin API is, for a deployment whose proxy serves
+`/api/admin` somewhere other than the Plug-In API; without it the admin API is
+reached at the profile's `base_url`, which is where Aether serves both.
 
-## How the keys are protected
+A profile may hold an application key, an admin token, or both: `auth login`
+stores the one, `admin login` the other, and neither needs the other.
+
+## How the keys and tokens are protected
+
+Admin tokens are kept exactly as keys are, in `admin/<profile>`, and everything
+below holds for both.
 
 - A key is read from a hidden prompt or from standard input. There is no flag
   for it: an argument is visible to every user of the machine through `ps` and
@@ -65,9 +80,12 @@ Highest precedence first:
 | profile  | `--profile`, `$CELADON_PROFILE`, `default_profile`, `default` |
 | base URL | `--base-url`, `$CELADON_BASE_URL`, the profile's `base_url`, the built-in default |
 | key      | `$CELADON_API_KEY`, `keys/<profile>` |
+| admin API | `--base-url`, `$CELADON_ADMIN_BASE_URL`, the profile's `admin_base_url`, then the base URL as above |
+| admin token | `$CELADON_ADMIN_TOKEN`, `admin/<profile>` |
 
-`auth login` stores into the profile the same rules choose, so with a default
-profile of `work`, a bare `celadon auth login` replaces the key of `work`. The
+`auth login` and `admin login` store into the profile the same rules choose,
+so with a default profile of `work`, a bare `celadon auth login` replaces the
+key of `work`. The
 first profile ever stored becomes the default; `auth switch` or
 `auth login --default` changes it.
 
@@ -75,6 +93,7 @@ A CI job needs no files at all:
 
 ```sh
 export CELADON_API_KEY=aek_…            # from the CI's secret store
+export CELADON_ADMIN_TOKEN=…            # only for `celadon admin`
 export CELADON_BASE_URL=https://aether.example.com
 celadon search --where media=photo -o json
 ```

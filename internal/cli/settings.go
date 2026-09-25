@@ -163,7 +163,7 @@ open one refuses the change rather than storing it quietly.`,
 			if cmd.Flags().Changed("ttl") {
 				secs, err := parseSeconds(ttl)
 				if err != nil {
-					return teal.Retention{}, nil, usageError(err)
+					return teal.Retention{}, nil, err
 				}
 				req.TTLSeconds = &secs
 			}
@@ -222,7 +222,7 @@ before the bot takes it back. "default" goes back to the plan's own timer.`,
 			if v != "default" {
 				var err error
 				if secs, err = parseSeconds(v); err != nil {
-					return teal.VaultSettings{}, nil, usageError(err)
+					return teal.VaultSettings{}, nil, err
 				}
 				if secs == 0 {
 					return teal.VaultSettings{}, nil, usageError(errors.New(`the timer cannot be switched off; use "default" for the plan's own`))

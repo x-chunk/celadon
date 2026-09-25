@@ -5,6 +5,7 @@
 //
 //	config.toml        profiles, the default one, and nothing secret
 //	keys/<profile>     one application key per file, mode 0600
+//	admin/<profile>    one admin token per file, mode 0600
 //
 // Keys are kept out of config.toml on purpose. The config is something a
 // person opens in an editor, pastes into an issue and syncs between
@@ -81,6 +82,9 @@ func ValidateBaseURL(raw string) error {
 type Profile struct {
 	BaseURL    string `toml:"base_url,omitempty"`
 	AuthHeader string `toml:"auth_header,omitempty"`
+	// AdminBaseURL is where the admin API is, when a proxy serves it
+	// somewhere other than BaseURL. Empty means BaseURL.
+	AdminBaseURL string `toml:"admin_base_url,omitempty"`
 
 	// What the key opened when it was stored, so that `auth status` can say
 	// which application a profile is without spending a request on it.
@@ -135,7 +139,7 @@ func (s *Store) Dir() string { return s.dir }
 func (s *Store) ConfigPath() string { return filepath.Join(s.dir, configFile) }
 
 // KeyPath is where the key of the named profile is.
-func (s *Store) KeyPath(profile string) string { return filepath.Join(s.dir, keysDir, profile) }
+func (s *Store) KeyPath(profile string) string { return s.secretPath(appKey, profile) }
 
 // Load reads config.toml. A missing file is an empty config, not an error.
 func (s *Store) Load() (*Config, error) {
@@ -198,17 +202,15 @@ func (s *Store) Update(fn func(*Config) error) error {
 	return s.Save(cfg)
 }
 
-// RemoveProfile deletes a profile and its key. When it was the default, the
-// default moves to the first profile left, if any.
+// RemoveProfile deletes a profile, its key and its admin token. When it was
+// the default, the default moves to the first profile left, if any.
 func (s *Store) RemoveProfile(name string) error {
 	if err := ValidateProfileName(name); err != nil {
 		return err
 	}
 	err := s.Update(func(cfg *Config) error {
-		if _, ok := cfg.Profiles[name]; !ok {
-			if _, kerr := os.Stat(s.KeyPath(name)); kerr != nil {
-				return fmt.Errorf("%w: %s", ErrNoProfile, name)
-			}
+		if _, ok := cfg.Profiles[name]; !ok && !s.HasKey(name) && !s.HasAdminToken(name) {
+			return fmt.Errorf("%w: %s", ErrNoProfile, name)
 		}
 		delete(cfg.Profiles, name)
 		if cfg.DefaultProfile == name {
@@ -222,5 +224,8 @@ func (s *Store) RemoveProfile(name string) error {
 	if err != nil {
 		return err
 	}
-	return s.DeleteKey(name)
+	if err := s.DeleteKey(name); err != nil {
+		return err
+	}
+	return s.DeleteAdminToken(name)
 }

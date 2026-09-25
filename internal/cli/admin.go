@@ -37,6 +37,8 @@ Run ` + "`celadon admin tui`" + ` for the full-screen interface.`,
 		newAdminLogoutCmd(env),
 		newAdminStatusCmd(env),
 		newAdminReferenceCmd(env),
+		newAdminCampaignsCmd(env),
+		newAdminCodesCmd(env),
 		newAdminTUICmd(env),
 	)
 	return cmd

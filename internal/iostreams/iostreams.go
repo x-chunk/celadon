@@ -37,6 +37,7 @@ type Streams struct {
 	// secret reads one line without echoing it. It is term.ReadPassword on
 	// a real terminal and replaceable in tests.
 	secret func() (string, error)
+	width  func() int
 
 	lines *bufio.Reader
 }
@@ -52,6 +53,17 @@ func System() *Streams {
 		ErrTTY: isTerminal(os.Stderr),
 	}
 	s.Color = s.OutTTY && colorAllowed()
+	out := int(os.Stdout.Fd())
+	s.width = func() int {
+		if !s.OutTTY {
+			return 0
+		}
+		w, _, err := term.GetSize(out)
+		if err != nil {
+			return 0
+		}
+		return w
+	}
 	fd := int(os.Stdin.Fd())
 	s.secret = func() (string, error) {
 		b, err := term.ReadPassword(fd)
@@ -68,6 +80,18 @@ func Test(in io.Reader, out, errOut io.Writer) *Streams {
 	}
 	return &Streams{In: in, Out: out, Err: errOut}
 }
+
+// Width is how many columns the output terminal has, or zero when the output
+// is not a terminal and lines may be as long as they need to be.
+func (s *Streams) Width() int {
+	if s.width == nil {
+		return 0
+	}
+	return s.width()
+}
+
+// SetWidth fixes what Width reports, for tests.
+func (s *Streams) SetWidth(w int) { s.width = func() int { return w } }
 
 // SetSecretReader replaces how a hidden line is read, for tests.
 func (s *Streams) SetSecretReader(fn func() (string, error)) { s.secret = fn }

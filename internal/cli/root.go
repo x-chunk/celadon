@@ -206,6 +206,9 @@ to script it. Start with ` + "`celadon auth login`" + `.`,
 		newAuthCmd(env),
 		newTUICmd(env),
 		newVersionCmd(env),
+
+		newAppCmd(env),
+		newAccountCmd(env),
 	)
 	markArgErrors(root)
 	return root

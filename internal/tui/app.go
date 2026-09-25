@@ -82,6 +82,7 @@ func New(ctx context.Context, client *teal.Client, opts Options) *Model {
 		newActionsTab(be),
 		newVaultTab(be),
 		newInsightsTab(be),
+		newSettingsTab(be),
 	}
 	m.started = make([]bool, len(m.tabs))
 	return m

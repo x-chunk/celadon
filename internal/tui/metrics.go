@@ -37,6 +37,8 @@ func NewMetrics(ctx context.Context, client *metrics.Client, opts Options) *Mode
 	}
 	m.tabs = []tab{
 		newMetricsOverviewTab(be),
+		newMetricsDashboardTab(be),
+		newMetricsSeriesTab(be),
 		newMetricsHealthTab(be),
 	}
 	m.started = make([]bool, len(m.tabs))

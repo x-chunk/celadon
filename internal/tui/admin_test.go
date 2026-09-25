@@ -48,7 +48,7 @@ func adminRefuse(status int, message string) http.HandlerFunc {
 
 func TestAdminOpensOnCampaigns(t *testing.T) {
 	d := newAdminDriver(t)
-	d.wantView("celadon admin", "ops", "1 Campaigns", "Reference",
+	d.wantView("celadon admin", "ops", "1 Campaigns", "2 Codes", "3 Reference",
 		"Summer week", "−25% pro", "+20% on a $50.00 top-up", "Seven days of lower prices.")
 	if q := d.api.called("GET", "/api/admin/promo/campaigns"); len(q) != 1 {
 		t.Fatalf("campaigns were loaded %d times", len(q))

@@ -29,6 +29,7 @@ func NewAdmin(ctx context.Context, client *admin.Client, opts Options) *Model {
 	}
 	m.tabs = []tab{
 		newCampaignsTab(be),
+		newCodesTab(be),
 		newReferenceTab(be),
 	}
 	m.started = make([]bool, len(m.tabs))

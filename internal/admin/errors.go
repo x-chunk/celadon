@@ -88,7 +88,7 @@ func errorFrom(raw []byte, status int, meta *Meta) *Error {
 	}
 	if err := json.Unmarshal(raw, &env); err != nil || env.OK == nil {
 		// Not the envelope. On a 404 or a 405 that is the router saying
-		// the route does not exist — which, under /api/admin, is what a
+		// the route does not exist — which, under /admin, is what a
 		// deployment without an ADMIN_TOKEN answers.
 		if status == http.StatusNotFound || status == http.StatusMethodNotAllowed {
 			e.Code = CodeNotServed

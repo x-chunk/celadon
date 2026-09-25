@@ -1,7 +1,7 @@
 # Administering a deployment
 
 `celadon admin` drives a deployment's private admin API — for now the
-promotions under `/api/admin/promo`: **campaigns**, which apply to everybody
+promotions under `/admin/promo`: **campaigns**, which apply to everybody
 while they run, and **promo codes**, which apply to whoever redeems them. Both
 grant the same kind of benefits.
 
@@ -16,12 +16,12 @@ missing campaign.
 celadon admin login                                     # hidden prompt
 celadon admin login --profile ops --base-url https://aether.example.com
 celadon admin login --with-token < admin-token.txt
-celadon admin login --admin-base-url https://internal.example.com   # a proxy serves /api/admin elsewhere
+celadon admin login --admin-base-url https://internal.example.com   # a proxy serves /admin elsewhere
 celadon admin status                                    # which address and token, and whether it is accepted
 celadon admin logout                                    # delete the token; the profile stays
 ```
 
-The token is checked against `GET /api/admin/promo/reference`, which changes
+The token is checked against `GET /admin/promo/reference`, which changes
 nothing, before it is stored in `~/.celadon/admin/<profile>` (mode 0600). A
 profile may hold an admin token without an application key. In CI, set
 `CELADON_ADMIN_TOKEN` and `CELADON_BASE_URL` (or `CELADON_ADMIN_BASE_URL`)

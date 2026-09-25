@@ -96,9 +96,9 @@ func TestNewAdminAndExplainItsRefusals(t *testing.T) {
 			return
 		}
 		switch r.URL.Path {
-		case "/api/admin/promo/reference":
+		case "/admin/promo/reference":
 			json.NewEncoder(w).Encode(map[string]any{"ok": true, "message": "success", "data": map[string]any{"max_discount_percent": 90}})
-		case "/api/admin/promo/codes":
+		case "/admin/promo/codes":
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(map[string]any{"ok": false, "message": "code already exists"})
 		default:

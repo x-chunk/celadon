@@ -152,7 +152,7 @@ type Campaign struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// CampaignListRequest narrows GET /api/admin/promo/campaigns. A nil request
+// CampaignListRequest narrows GET /admin/promo/campaigns. A nil request
 // lists the active campaigns of both kinds, fifty at a time.
 type CampaignListRequest struct {
 	// Kind is KindOffer or KindEvent; empty for both.
@@ -229,7 +229,7 @@ type Code struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// CodeListRequest pages through GET /api/admin/promo/codes. A nil request
+// CodeListRequest pages through GET /admin/promo/codes. A nil request
 // lists the first fifty active codes.
 type CodeListRequest struct {
 	Inactive bool

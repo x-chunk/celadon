@@ -113,7 +113,7 @@ func explainAdmin(e *admin.Error) Problem {
 		p.Title = "the admin token was not accepted"
 		p.Hint = "check it against the deployment's ADMIN_TOKEN and run `celadon admin login` again"
 	case admin.CodeNotServed:
-		p.Hint = "the deployment registers no admin routes without an ADMIN_TOKEN of 24 characters or more; if it has one, a proxy may be hiding /api/admin (see admin_base_url)"
+		p.Hint = "the deployment registers no admin routes without an ADMIN_TOKEN of 24 characters or more; if it has one, a proxy may be hiding /admin (see admin_base_url)"
 	case admin.CodeBadRequest:
 		p.Hint = "`celadon admin reference` lists the plans, quotas and amounts the API accepts"
 	case admin.CodeConflict:

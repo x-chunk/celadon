@@ -46,7 +46,7 @@ without a request. `auth_header` is how the key is sent: `bearer` (the
 default, `Authorization: Bearer …`), `bare` (`Authorization: …`) or
 `x-aether-key` (`X-Aether-Key: …`), for a network that strips `Authorization`.
 `admin_base_url` is where the admin API is, for a deployment whose proxy serves
-`/api/admin` somewhere other than the Plug-In API; without it the admin API is
+`/admin` somewhere other than the Plug-In API; without it the admin API is
 reached at the profile's `base_url`, which is where Aether serves both.
 
 `metrics_url` is where the metrics listener is: its own port, published on the

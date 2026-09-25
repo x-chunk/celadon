@@ -50,7 +50,7 @@ var sampleReference = map[string]any{
 
 func TestAdminLoginStoresAVerifiedToken(t *testing.T) {
 	h := newHarness(t)
-	h.api.adminOK("GET", "/api/admin/promo/reference", sampleReference)
+	h.api.adminOK("GET", "/admin/promo/reference", sampleReference)
 
 	r := h.run(testAdminToken+"\n", "admin", "login", "--with-token", "--base-url", h.api.srv.URL, "-p", "ops").wantCode(t, ExitOK)
 	if !strings.Contains(r.stderr, "accepts the token") || strings.Contains(r.stdout+r.stderr, testAdminToken) {
@@ -97,7 +97,7 @@ func TestAdminLoginStoresAVerifiedToken(t *testing.T) {
 
 func TestAdminLoginRefusesARejectedOrShortToken(t *testing.T) {
 	h := newHarness(t)
-	h.api.adminOK("GET", "/api/admin/promo/reference", sampleReference)
+	h.api.adminOK("GET", "/admin/promo/reference", sampleReference)
 	r := h.run(strings.Repeat("x", 30)+"\n", "admin", "login", "--with-token", "--base-url", h.api.srv.URL).wantCode(t, ExitAuth)
 	if !strings.Contains(r.stderr, "admin token was not accepted") {
 		t.Errorf("stderr = %q", r.stderr)
@@ -120,7 +120,7 @@ func TestAdminWithoutAToken(t *testing.T) {
 func TestAdminNotServed(t *testing.T) {
 	h := newHarness(t).adminLoggedIn()
 	// What Go's router answers for a route nobody registered.
-	h.api.on("GET", "/api/admin/promo/reference", http.NotFound)
+	h.api.on("GET", "/admin/promo/reference", http.NotFound)
 	r := h.run("", "admin", "reference").wantCode(t, ExitError)
 	if !strings.Contains(r.stderr, "ADMIN_TOKEN") {
 		t.Errorf("stderr = %q", r.stderr)

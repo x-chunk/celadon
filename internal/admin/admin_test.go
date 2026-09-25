@@ -64,7 +64,7 @@ func TestNewRefusesAShortToken(t *testing.T) {
 
 func TestReference(t *testing.T) {
 	srv := server(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/admin/promo/reference" {
+		if r.Method != http.MethodGet || r.URL.Path != "/admin/promo/reference" {
 			t.Errorf("%s %s", r.Method, r.URL.Path)
 		}
 		// The response example is the one the server's own type renders.
@@ -142,11 +142,11 @@ func TestCampaignCalls(t *testing.T) {
 	}
 
 	want := []string{
-		"GET /api/admin/promo/campaigns?inactive=true&kind=event&limit=10&offset=20",
-		"GET /api/admin/promo/campaigns/7?",
-		"POST /api/admin/promo/campaigns?",
-		"PATCH /api/admin/promo/campaigns/7?",
-		"DELETE /api/admin/promo/campaigns/7?",
+		"GET /admin/promo/campaigns?inactive=true&kind=event&limit=10&offset=20",
+		"GET /admin/promo/campaigns/7?",
+		"POST /admin/promo/campaigns?",
+		"PATCH /admin/promo/campaigns/7?",
+		"DELETE /admin/promo/campaigns/7?",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("requests:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -218,11 +218,11 @@ func TestCodeCallsEscapeTheCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"GET /api/admin/promo/codes?inactive=true",
-		"POST /api/admin/promo/codes?",
-		"GET /api/admin/promo/codes/a%2Fb%20c?",
-		"GET /api/admin/promo/codes/SUMMER25/redemptions?limit=5",
-		"DELETE /api/admin/promo/codes/SUMMER25?",
+		"GET /admin/promo/codes?inactive=true",
+		"POST /admin/promo/codes?",
+		"GET /admin/promo/codes/a%2Fb%20c?",
+		"GET /admin/promo/codes/SUMMER25/redemptions?limit=5",
+		"DELETE /admin/promo/codes/SUMMER25?",
 	}
 	if strings.Join(paths, "\n") != strings.Join(want, "\n") {
 		t.Errorf("requests:\n%s\nwant:\n%s", strings.Join(paths, "\n"), strings.Join(want, "\n"))

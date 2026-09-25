@@ -10,7 +10,7 @@ cmd/celadon         main: signals, streams, wiring the TUI into the CLI
 cmd/gendocs         man pages and completion scripts, for packaging
 internal/
 ├── version         the build's version, from -ldflags or the module info
-├── admin           a teal-shaped client for the private admin API (/api/admin/promo)
+├── admin           a teal-shaped client for the private admin API (/admin/promo)
 ├── metrics         a teal-shaped client for the metrics listener (health through /api)
 ├── config          ~/.celadon: profiles, key and token files, resolution order
 ├── iostreams       stdin/stdout/stderr, TTY detection, hidden prompts

@@ -20,11 +20,11 @@ var sampleCode = map[string]any{
 
 func TestAdminCampaigns(t *testing.T) {
 	h := newHarness(t).adminLoggedIn()
-	h.api.adminOK("GET", "/api/admin/promo/campaigns", []any{sampleCampaign})
-	h.api.adminOK("GET", "/api/admin/promo/campaigns/7", sampleCampaign)
-	h.api.adminOK("POST", "/api/admin/promo/campaigns", sampleCampaign)
-	h.api.adminOK("PATCH", "/api/admin/promo/campaigns/7", sampleCampaign)
-	h.api.adminOK("DELETE", "/api/admin/promo/campaigns/7", map[string]any{})
+	h.api.adminOK("GET", "/admin/promo/campaigns", []any{sampleCampaign})
+	h.api.adminOK("GET", "/admin/promo/campaigns/7", sampleCampaign)
+	h.api.adminOK("POST", "/admin/promo/campaigns", sampleCampaign)
+	h.api.adminOK("PATCH", "/admin/promo/campaigns/7", sampleCampaign)
+	h.api.adminOK("DELETE", "/admin/promo/campaigns/7", map[string]any{})
 
 	r := h.run("", "admin", "campaigns", "list", "--kind", "event", "-a", "--limit", "10").wantCode(t, ExitOK)
 	if q := h.api.last().Query; q != "inactive=true&kind=event&limit=10" {
@@ -91,7 +91,7 @@ func TestAdminCampaigns(t *testing.T) {
 
 func TestAdminCampaignRefusalIsExplained(t *testing.T) {
 	h := newHarness(t).adminLoggedIn()
-	h.api.on("POST", "/api/admin/promo/campaigns", adminRefuse(http.StatusBadRequest, "a discount is between 1 and 90 percent"))
+	h.api.on("POST", "/admin/promo/campaigns", adminRefuse(http.StatusBadRequest, "a discount is between 1 and 90 percent"))
 	r := h.run("", "admin", "campaigns", "create", "--name", "x", "--discount", "pro:95").wantCode(t, ExitError)
 	if !strings.Contains(r.stderr, "between 1 and 90 percent") || !strings.Contains(r.stderr, "admin reference") {
 		t.Errorf("stderr = %q", r.stderr)
@@ -103,12 +103,12 @@ func TestAdminCampaignRefusalIsExplained(t *testing.T) {
 
 func TestAdminCodes(t *testing.T) {
 	h := newHarness(t).adminLoggedIn()
-	h.api.adminOK("GET", "/api/admin/promo/codes", []any{sampleCode})
-	h.api.adminOK("GET", "/api/admin/promo/codes/SUMMER25", sampleCode)
-	h.api.adminOK("POST", "/api/admin/promo/codes", sampleCode)
-	h.api.adminOK("PATCH", "/api/admin/promo/codes/SUMMER25", sampleCode)
-	h.api.adminOK("DELETE", "/api/admin/promo/codes/SUMMER25", map[string]any{})
-	h.api.adminOK("GET", "/api/admin/promo/codes/SUMMER25/redemptions", []any{
+	h.api.adminOK("GET", "/admin/promo/codes", []any{sampleCode})
+	h.api.adminOK("GET", "/admin/promo/codes/SUMMER25", sampleCode)
+	h.api.adminOK("POST", "/admin/promo/codes", sampleCode)
+	h.api.adminOK("PATCH", "/admin/promo/codes/SUMMER25", sampleCode)
+	h.api.adminOK("DELETE", "/admin/promo/codes/SUMMER25", map[string]any{})
+	h.api.adminOK("GET", "/admin/promo/codes/SUMMER25/redemptions", []any{
 		map[string]any{"id": 1, "code": "SUMMER25", "account_id": 42, "expires_at": 1, "created_at": "2026-09-01T00:00:00Z"},
 	})
 
@@ -148,7 +148,7 @@ func TestAdminCodes(t *testing.T) {
 
 func TestAdminCodeConflict(t *testing.T) {
 	h := newHarness(t).adminLoggedIn()
-	h.api.on("POST", "/api/admin/promo/codes", adminRefuse(http.StatusConflict, "code already exists"))
+	h.api.on("POST", "/admin/promo/codes", adminRefuse(http.StatusConflict, "code already exists"))
 	r := h.run("", "admin", "codes", "create", "SUMMER25", "--name", "x", "--discount", "all:5").wantCode(t, ExitError)
 	if !strings.Contains(r.stderr, "already exists") || !strings.Contains(r.stderr, "drawn") {
 		t.Errorf("stderr = %q", r.stderr)
@@ -157,7 +157,7 @@ func TestAdminCodeConflict(t *testing.T) {
 
 func TestAdminBenefitsFile(t *testing.T) {
 	h := newHarness(t).adminLoggedIn()
-	h.api.adminOK("POST", "/api/admin/promo/codes", sampleCode)
+	h.api.adminOK("POST", "/admin/promo/codes", sampleCode)
 	stdin := `{"discounts":[{"tier":"pro","percent":10}],"limits":[{"tier":"","limit":"search:daily","value":-1}]}`
 	h.run(stdin, "admin", "codes", "create", "--name", "x", "--benefits-file", "-").wantCode(t, ExitOK)
 	b := decodeBody(t, h.api.last().Body)["benefits"].(map[string]any)

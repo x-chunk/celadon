@@ -9,7 +9,7 @@ import (
 // base is embedded in every service and folds one call down to one line:
 //
 //	func (s *PromoService) Reference(ctx context.Context) (Reference, *Meta, error) {
-//		return s.get[Reference](ctx, "api/admin/promo/reference", nil)
+//		return s.get[Reference](ctx, "admin/promo/reference", nil)
 //	}
 //
 // The type is always written out, because T is in the result and Go infers

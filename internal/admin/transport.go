@@ -16,7 +16,7 @@ import (
 // Request is one call to the API, before it becomes an *http.Request.
 type Request struct {
 	Method string     // http.MethodGet, http.MethodPost, …
-	Path   string     // relative to the base URL, e.g. "api/admin/promo/codes"
+	Path   string     // relative to the base URL, e.g. "admin/promo/codes"
 	Query  url.Values // optional
 	Body   any        // marshalled as JSON when not nil
 
@@ -51,7 +51,7 @@ type envelope struct {
 // T is in the result and not in the arguments, so it is always given
 // explicitly:
 //
-//	ref, meta, err := c.Do[Reference](ctx, Request{Method: http.MethodGet, Path: "api/admin/promo/reference"})
+//	ref, meta, err := c.Do[Reference](ctx, Request{Method: http.MethodGet, Path: "admin/promo/reference"})
 func (c *Client) Do[T any](ctx context.Context, req Request) (T, *Meta, error) {
 	var out T
 	resp, meta, err := c.send(ctx, req)

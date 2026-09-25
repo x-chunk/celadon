@@ -28,7 +28,7 @@ var adminCampaign = map[string]any{
 func newAdminDriver(t *testing.T) *driver {
 	t.Helper()
 	api := newFakeAPI(t)
-	api.ok("GET", "/api/admin/promo/campaigns", []any{adminCampaign})
+	api.ok("GET", "/admin/promo/campaigns", []any{adminCampaign})
 	c, err := admin.New(testAdminToken, admin.WithBaseURL(api.srv.URL), admin.WithRetry(0, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func TestAdminOpensOnCampaigns(t *testing.T) {
 	d := newAdminDriver(t)
 	d.wantView("celadon admin", "ops", "1 Campaigns", "2 Codes", "3 Reference",
 		"Summer week", "−25% pro", "+20% on a $50.00 top-up", "Seven days of lower prices.")
-	if q := d.api.called("GET", "/api/admin/promo/campaigns"); len(q) != 1 {
+	if q := d.api.called("GET", "/admin/promo/campaigns"); len(q) != 1 {
 		t.Fatalf("campaigns were loaded %d times", len(q))
 	}
 	if strings.Contains(d.view(), "balance") {
@@ -62,7 +62,7 @@ func TestAdminCampaignFiltersReload(t *testing.T) {
 	d := newAdminDriver(t)
 	d.keys("f")
 	d.keys("a")
-	calls := d.api.called("GET", "/api/admin/promo/campaigns")
+	calls := d.api.called("GET", "/admin/promo/campaigns")
 	if len(calls) != 3 {
 		t.Fatalf("filters loaded %d times", len(calls))
 	}
@@ -71,7 +71,7 @@ func TestAdminCampaignFiltersReload(t *testing.T) {
 
 func TestAdminCreateCampaign(t *testing.T) {
 	d := newAdminDriver(t)
-	d.api.ok("POST", "/api/admin/promo/campaigns", adminCampaign)
+	d.api.ok("POST", "/admin/promo/campaigns", adminCampaign)
 
 	d.keys("n")
 	d.wantView("New campaign", "offer runs quietly")
@@ -91,7 +91,7 @@ func TestAdminCreateCampaign(t *testing.T) {
 	d.key(tea.KeyTab)
 	d.keys("gift pro:25")
 	d.key(tea.KeyCtrlS)
-	if len(d.api.called("POST", "/api/admin/promo/campaigns")) != 0 {
+	if len(d.api.called("POST", "/admin/promo/campaigns")) != 0 {
 		t.Fatal("unreadable benefits were sent")
 	}
 	d.wantView("start it with discount, bonus or grant")
@@ -100,7 +100,7 @@ func TestAdminCreateCampaign(t *testing.T) {
 	d.keys("discount pro:25, grant free:search:daily=unlimited")
 	before := time.Now()
 	d.key(tea.KeyEnter)
-	body := d.body("POST", "/api/admin/promo/campaigns")
+	body := d.body("POST", "/admin/promo/campaigns")
 	if body["kind"] != "event" || body["name"] != "Autumn q" {
 		t.Errorf("create body = %v", body)
 	}
@@ -115,7 +115,7 @@ func TestAdminCreateCampaign(t *testing.T) {
 	if limits[0].(map[string]any)["value"] != float64(-1) {
 		t.Errorf("limits = %v", limits)
 	}
-	if n := len(d.api.called("GET", "/api/admin/promo/campaigns")); n != 2 {
+	if n := len(d.api.called("GET", "/admin/promo/campaigns")); n != 2 {
 		t.Errorf("the list was loaded %d times, want a reload after saving", n)
 	}
 	d.wantView("Saved")
@@ -123,12 +123,12 @@ func TestAdminCreateCampaign(t *testing.T) {
 
 func TestAdminEditCampaignSendsOnlyWhatChanged(t *testing.T) {
 	d := newAdminDriver(t)
-	d.api.ok("PATCH", "/api/admin/promo/campaigns/7", adminCampaign)
+	d.api.ok("PATCH", "/admin/promo/campaigns/7", adminCampaign)
 
 	d.keys("e")
 	d.wantView("Edit campaign #7", "discount pro:25, bonus 50:20")
 	d.key(tea.KeyCtrlS)
-	if len(d.api.called("PATCH", "/api/admin/promo/campaigns/7")) != 0 {
+	if len(d.api.called("PATCH", "/admin/promo/campaigns/7")) != 0 {
 		t.Fatal("an unchanged form was sent")
 	}
 	d.wantView("Nothing changed.")
@@ -137,7 +137,7 @@ func TestAdminEditCampaignSendsOnlyWhatChanged(t *testing.T) {
 	d.key(tea.KeyTab)
 	d.keys(" 2")
 	d.key(tea.KeyCtrlS)
-	body := d.body("PATCH", "/api/admin/promo/campaigns/7")
+	body := d.body("PATCH", "/admin/promo/campaigns/7")
 	if len(body) != 1 || body["name"] != "Summer week 2" {
 		t.Errorf("patch = %v, want only the name", body)
 	}
@@ -145,7 +145,7 @@ func TestAdminEditCampaignSendsOnlyWhatChanged(t *testing.T) {
 
 func TestAdminCampaignRefusalStaysOnTheForm(t *testing.T) {
 	d := newAdminDriver(t)
-	d.api.on("POST", "/api/admin/promo/campaigns", adminRefuse(http.StatusBadRequest, "a discount is between 1 and 90 percent"))
+	d.api.on("POST", "/admin/promo/campaigns", adminRefuse(http.StatusBadRequest, "a discount is between 1 and 90 percent"))
 	d.keys("n")
 	d.key(tea.KeyTab)
 	d.keys("Deep")
@@ -162,11 +162,11 @@ func TestAdminCampaignRefusalStaysOnTheForm(t *testing.T) {
 func TestAdminStopAndDeleteCampaign(t *testing.T) {
 	d := newAdminDriver(t)
 	stopped := map[string]any{"id": 7, "name": "Summer week", "state": "stopped", "active": false}
-	d.api.ok("PATCH", "/api/admin/promo/campaigns/7", stopped)
-	d.api.ok("DELETE", "/api/admin/promo/campaigns/7", map[string]any{})
+	d.api.ok("PATCH", "/admin/promo/campaigns/7", stopped)
+	d.api.ok("DELETE", "/admin/promo/campaigns/7", map[string]any{})
 
 	d.keys("s")
-	if body := d.body("PATCH", "/api/admin/promo/campaigns/7"); len(body) != 1 || body["active"] != false {
+	if body := d.body("PATCH", "/admin/promo/campaigns/7"); len(body) != 1 || body["active"] != false {
 		t.Errorf("stop = %v", body)
 	}
 	d.wantView(`"Summer week" is stopped.`)
@@ -178,19 +178,19 @@ func TestAdminStopAndDeleteCampaign(t *testing.T) {
 		t.Fatal("q quit during a confirmation")
 	}
 	d.keys("n")
-	if len(d.api.called("DELETE", "/api/admin/promo/campaigns/7")) != 0 {
+	if len(d.api.called("DELETE", "/admin/promo/campaigns/7")) != 0 {
 		t.Fatal("deleted without a yes")
 	}
 	d.keys("d")
 	d.keys("y")
-	if len(d.api.called("DELETE", "/api/admin/promo/campaigns/7")) != 1 {
+	if len(d.api.called("DELETE", "/admin/promo/campaigns/7")) != 1 {
 		t.Fatal("y did not delete")
 	}
 }
 
 func TestAdminReference(t *testing.T) {
 	d := newAdminDriver(t)
-	d.api.ok("GET", "/api/admin/promo/reference", map[string]any{
+	d.api.ok("GET", "/admin/promo/reference", map[string]any{
 		"tiers":                []any{map[string]any{"tier": "pro", "name": "Pro", "price_cents": 899, "paid": true}},
 		"limits":               []any{map[string]any{"limit": "search:daily", "label": "Searches a day", "unit": "searches"}},
 		"top_up_amounts_cents": []int64{5000},

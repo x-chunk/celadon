@@ -384,7 +384,7 @@ func newCampaignCreateCmd(env *Env) *cobra.Command {
 				req.Active = admin.Ptr(false)
 			}
 			if f.dryRun {
-				return dryRun(env, "POST", "/api/admin/promo/campaigns", req)
+				return dryRun(env, "POST", "/admin/promo/campaigns", req)
 			}
 			c, _, err := env.AdminClient()
 			if err != nil {
@@ -458,7 +458,7 @@ func newCampaignEditCmd(env *Env) *cobra.Command {
 				return usageError(errors.New("nothing to change: give at least one flag"))
 			}
 			if f.dryRun {
-				return dryRun(env, "PATCH", fmt.Sprintf("/api/admin/promo/campaigns/%d", id), req)
+				return dryRun(env, "PATCH", fmt.Sprintf("/admin/promo/campaigns/%d", id), req)
 			}
 			c, _, err := env.AdminClient()
 			if err != nil {
@@ -764,7 +764,7 @@ func newCodeCreateCmd(env *Env) *cobra.Command {
 				req.Active = admin.Ptr(false)
 			}
 			if f.dryRun {
-				return dryRun(env, "POST", "/api/admin/promo/codes", req)
+				return dryRun(env, "POST", "/admin/promo/codes", req)
 			}
 			c, _, err := env.AdminClient()
 			if err != nil {
@@ -833,7 +833,7 @@ func newCodeEditCmd(env *Env) *cobra.Command {
 				return usageError(errors.New("nothing to change: give at least one flag"))
 			}
 			if f.dryRun {
-				return dryRun(env, "PATCH", "/api/admin/promo/codes/"+args[0], req)
+				return dryRun(env, "PATCH", "/admin/promo/codes/"+args[0], req)
 			}
 			c, _, err := env.AdminClient()
 			if err != nil {

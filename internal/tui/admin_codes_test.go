@@ -17,12 +17,12 @@ var adminCode = map[string]any{
 // it opens on already answered.
 func TestAdminCodes(t *testing.T) {
 	d := newAdminDriver(t)
-	d.api.ok("GET", "/api/admin/promo/codes", []any{adminCode})
-	d.api.ok("GET", "/api/admin/promo/codes/SUMMER25/redemptions", []any{
+	d.api.ok("GET", "/admin/promo/codes", []any{adminCode})
+	d.api.ok("GET", "/admin/promo/codes/SUMMER25/redemptions", []any{
 		map[string]any{"id": 1, "code": "SUMMER25", "account_id": 4242, "expires_at": 1, "created_at": "2026-09-01T00:00:00Z"},
 	})
-	d.api.ok("PATCH", "/api/admin/promo/codes/SUMMER25", adminCode)
-	d.api.ok("POST", "/api/admin/promo/codes", adminCode)
+	d.api.ok("PATCH", "/admin/promo/codes/SUMMER25", adminCode)
+	d.api.ok("POST", "/admin/promo/codes", adminCode)
 
 	d.open("Codes")
 	d.wantView("SUMMER25", "1/100", "30d once redeemed", "Press enter to list")
@@ -38,7 +38,7 @@ func TestAdminCodes(t *testing.T) {
 	d.send(tea.KeyMsg{Type: tea.KeyCtrlU})
 	d.keys("0")
 	d.key(tea.KeyCtrlS)
-	if body := d.body("PATCH", "/api/admin/promo/codes/SUMMER25"); len(body) != 1 || body["max_redemptions"] != float64(0) {
+	if body := d.body("PATCH", "/admin/promo/codes/SUMMER25"); len(body) != 1 || body["max_redemptions"] != float64(0) {
 		t.Errorf("edit = %v, want only max_redemptions 0", body)
 	}
 
@@ -50,7 +50,7 @@ func TestAdminCodes(t *testing.T) {
 	}
 	d.keys("grant all:search:daily=unlimited")
 	d.key(tea.KeyEnter)
-	body := d.body("POST", "/api/admin/promo/codes")
+	body := d.body("POST", "/admin/promo/codes")
 	for _, absent := range []string{"code", "max_redemptions", "duration", "starts_at", "ends_at"} {
 		if _, has := body[absent]; has {
 			t.Errorf("a new code sent %q, left at its default: %v", absent, body)
@@ -60,7 +60,7 @@ func TestAdminCodes(t *testing.T) {
 
 func TestAdminUnauthorizedReachesTheStatusLine(t *testing.T) {
 	d := newAdminDriver(t)
-	d.api.on("GET", "/api/admin/promo/codes", adminRefuse(http.StatusUnauthorized, "unauthorized"))
+	d.api.on("GET", "/admin/promo/codes", adminRefuse(http.StatusUnauthorized, "unauthorized"))
 	d.open("Codes")
 	d.wantView("admin token was not accepted", "celadon admin login")
 }

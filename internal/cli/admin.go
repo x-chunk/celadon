@@ -54,7 +54,7 @@ func newAdminLoginCmd(env *Env) *cobra.Command {
 		Use:   "login",
 		Short: "Store the deployment's admin token in a profile",
 		Long: `Store the deployment's ADMIN_TOKEN in a profile, after checking that it opens
-the admin API (GET /api/admin/promo/reference, which changes nothing).
+the admin API (GET /admin/promo/reference, which changes nothing).
 
 The token is read from a hidden prompt, or from standard input with
 --with-token; never from an argument. The profile is chosen as everywhere else,

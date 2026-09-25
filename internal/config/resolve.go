@@ -27,6 +27,8 @@ func ValidateAuthHeader(h string) error {
 type Overrides struct {
 	Profile string
 	BaseURL string
+	// MetricsURL is --metrics-url, which only the metrics listener reads.
+	MetricsURL string
 }
 
 // Where a value came from, for `auth status` to report.

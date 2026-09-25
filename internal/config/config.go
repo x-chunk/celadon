@@ -6,6 +6,7 @@
 //	config.toml        profiles, the default one, and nothing secret
 //	keys/<profile>     one application key per file, mode 0600
 //	admin/<profile>    one admin token per file, mode 0600
+//	metrics/<profile>  one metrics token per file, mode 0600
 //
 // Keys are kept out of config.toml on purpose. The config is something a
 // person opens in an editor, pastes into an issue and syncs between
@@ -85,6 +86,9 @@ type Profile struct {
 	// AdminBaseURL is where the admin API is, when a proxy serves it
 	// somewhere other than BaseURL. Empty means BaseURL.
 	AdminBaseURL string `toml:"admin_base_url,omitempty"`
+	// MetricsURL is where the metrics listener is — its own port, on the
+	// loopback address or at the end of a tunnel. Empty means the loopback.
+	MetricsURL string `toml:"metrics_url,omitempty"`
 
 	// What the key opened when it was stored, so that `auth status` can say
 	// which application a profile is without spending a request on it.
@@ -202,14 +206,14 @@ func (s *Store) Update(fn func(*Config) error) error {
 	return s.Save(cfg)
 }
 
-// RemoveProfile deletes a profile, its key and its admin token. When it was
+// RemoveProfile deletes a profile, its key and its admin and metrics tokens. When it was
 // the default, the default moves to the first profile left, if any.
 func (s *Store) RemoveProfile(name string) error {
 	if err := ValidateProfileName(name); err != nil {
 		return err
 	}
 	err := s.Update(func(cfg *Config) error {
-		if _, ok := cfg.Profiles[name]; !ok && !s.HasKey(name) && !s.HasAdminToken(name) {
+		if _, ok := cfg.Profiles[name]; !ok && !s.HasKey(name) && !s.HasAdminToken(name) && !s.HasMetricsToken(name) {
 			return fmt.Errorf("%w: %s", ErrNoProfile, name)
 		}
 		delete(cfg.Profiles, name)
@@ -227,5 +231,8 @@ func (s *Store) RemoveProfile(name string) error {
 	if err := s.DeleteKey(name); err != nil {
 		return err
 	}
-	return s.DeleteAdminToken(name)
+	if err := s.DeleteAdminToken(name); err != nil {
+		return err
+	}
+	return s.DeleteMetricsToken(name)
 }

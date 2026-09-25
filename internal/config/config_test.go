@@ -19,6 +19,8 @@ func newStore(t *testing.T) *Store {
 	t.Setenv(EnvBaseURL, "")
 	t.Setenv(EnvAdminToken, "")
 	t.Setenv(EnvAdminBaseURL, "")
+	t.Setenv(EnvMetricsToken, "")
+	t.Setenv(EnvMetricsURL, "")
 	s, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

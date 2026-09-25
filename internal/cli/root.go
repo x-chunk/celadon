@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/x-chunk/teal"
 
+	"github.com/x-chunk/celadon/internal/admin"
 	"github.com/x-chunk/celadon/internal/api"
 	"github.com/x-chunk/celadon/internal/config"
 	"github.com/x-chunk/celadon/internal/iostreams"
@@ -49,6 +50,8 @@ type Env struct {
 	// RunTUI starts the full-screen interface. It is a seam so that the
 	// cli package does not import the tui one, and a test can stub it.
 	RunTUI func(ctx context.Context, env *Env) error
+	// RunAdminTUI starts the admin interface, a seam for the same reasons.
+	RunAdminTUI func(ctx context.Context, env *Env) error
 
 	profile string
 	baseURL string
@@ -109,6 +112,29 @@ func (e *Env) Client() (*teal.Client, config.Resolved, error) {
 		return nil, r, err
 	}
 	c, err := api.New(r, api.Options{Retries: e.retries, HTTPClient: e.HTTPClient})
+	return c, r, err
+}
+
+// AdminResolve settles the profile, deployment and admin token in use.
+func (e *Env) AdminResolve() (config.AdminResolved, error) {
+	s, err := e.Store()
+	if err != nil {
+		return config.AdminResolved{}, err
+	}
+	return s.ResolveAdmin(e.Overrides(), admin.DefaultBaseURL)
+}
+
+// AdminClient builds an admin client for the profile in use. A missing
+// token is an authentication problem, and is reported as one.
+func (e *Env) AdminClient() (*admin.Client, config.AdminResolved, error) {
+	r, err := e.AdminResolve()
+	if errors.Is(err, config.ErrNoAdminToken) {
+		return nil, r, authError(fmt.Errorf("no admin token for profile %q: run `celadon admin login`, or set $%s", r.Profile, config.EnvAdminToken))
+	}
+	if err != nil {
+		return nil, r, err
+	}
+	c, err := api.NewAdmin(r, api.Options{Retries: e.retries, HTTPClient: e.HTTPClient})
 	return c, r, err
 }
 
@@ -198,6 +224,7 @@ to script it. Start with ` + "`celadon auth login`" + `.`,
 		&cobra.Group{ID: groupCore, Title: "Core commands:"},
 		&cobra.Group{ID: groupArchive, Title: "Archive commands:"},
 		&cobra.Group{ID: groupAccount, Title: "Account commands:"},
+		&cobra.Group{ID: groupAdmin, Title: "Deployment commands:"},
 	)
 	root.SetHelpCommandGroupID(groupCore)
 	root.SetCompletionCommandGroupID(groupCore)
@@ -221,6 +248,8 @@ to script it. Start with ` + "`celadon auth login`" + `.`,
 		newVaultCmd(env),
 		newActionsCmd(env),
 		newSettingsCmd(env),
+
+		newAdminCmd(env),
 	)
 	markArgErrors(root)
 	return root
@@ -262,6 +291,7 @@ const (
 	groupCore    = "core"
 	groupArchive = "archive"
 	groupAccount = "account"
+	groupAdmin   = "admin"
 )
 
 // Execute runs the command line and returns the process's exit code.

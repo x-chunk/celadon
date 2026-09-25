@@ -105,7 +105,7 @@ type harness struct {
 // none of the environment that would override it.
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	for _, k := range []string{config.EnvHome, config.EnvProfile, config.EnvAPIKey, config.EnvBaseURL, "VISUAL", "EDITOR"} {
+	for _, k := range []string{config.EnvHome, config.EnvProfile, config.EnvAPIKey, config.EnvBaseURL, config.EnvAdminToken, config.EnvAdminBaseURL, "VISUAL", "EDITOR"} {
 		t.Setenv(k, "")
 	}
 	return &harness{t: t, api: newFakeAPI(t), dir: t.TempDir()}

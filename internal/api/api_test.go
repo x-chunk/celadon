@@ -87,3 +87,49 @@ func TestExplainANetworkFailure(t *testing.T) {
 		t.Errorf("Explain = %+v", p)
 	}
 }
+
+func TestNewAdminAndExplainItsRefusals(t *testing.T) {
+	const token = "0123456789abcdef0123456789abcdef"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token || !strings.HasPrefix(r.Header.Get("User-Agent"), "celadon/") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/api/admin/promo/reference":
+			json.NewEncoder(w).Encode(map[string]any{"ok": true, "message": "success", "data": map[string]any{"max_discount_percent": 90}})
+		case "/api/admin/promo/codes":
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "message": "code already exists"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c, err := NewAdmin(config.AdminResolved{BaseURL: srv.URL, Token: token}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, _, err := c.Promo.Reference(context.Background())
+	if err != nil || ref.MaxDiscountPercent != 90 {
+		t.Fatalf("reference = %+v, %v", ref, err)
+	}
+	_, _, err = c.Promo.Codes(context.Background(), nil)
+	if p := Explain(err, time.Now()); p.Title != "code already exists" || !strings.Contains(p.Hint, "drawn") {
+		t.Errorf("conflict = %+v", p)
+	}
+	_, _, err = c.Promo.Campaign(context.Background(), 1)
+	if p := Explain(err, time.Now()); !strings.Contains(p.Hint, "ADMIN_TOKEN") {
+		t.Errorf("not served = %+v", p)
+	}
+
+	wrong, err := NewAdmin(config.AdminResolved{BaseURL: srv.URL, Token: strings.Repeat("x", 30)}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = wrong.Promo.Reference(context.Background())
+	if p := Explain(err, time.Now()); !p.Auth || !strings.Contains(p.Hint, "admin login") {
+		t.Errorf("unauthorized = %+v", p)
+	}
+}

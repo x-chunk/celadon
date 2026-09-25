@@ -9,6 +9,7 @@ import (
 
 	"github.com/x-chunk/teal"
 
+	"github.com/x-chunk/celadon/internal/admin"
 	"github.com/x-chunk/celadon/internal/config"
 	"github.com/x-chunk/celadon/internal/version"
 )
@@ -53,4 +54,21 @@ func AuthHeader(name string) teal.AuthHeader {
 	default:
 		return teal.AuthBearer
 	}
+}
+
+// NewAdmin builds an admin client for a resolved profile.
+func NewAdmin(r config.AdminResolved, o Options) (*admin.Client, error) {
+	opts := []admin.Option{
+		admin.WithBaseURL(r.BaseURL),
+		admin.WithUserAgent("celadon/" + version.Get().Version),
+		admin.WithRetry(o.Retries, 500*time.Millisecond),
+	}
+	if o.HTTPClient != nil {
+		opts = append(opts, admin.WithHTTPClient(o.HTTPClient))
+	}
+	c, err := admin.New(r.Token, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("building the admin client: %w", err)
+	}
+	return c, nil
 }

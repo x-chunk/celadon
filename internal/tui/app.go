@@ -60,6 +60,12 @@ type Model struct {
 	width, height int
 	help          bool
 
+	// admin marks the admin interface, whose header names the deployment
+	// rather than an application, and whose calls cost nothing.
+	admin bool
+	// note closes the help screen: what the calls cost, and where they go.
+	note string
+
 	app       *teal.Application
 	balance   string
 	status    string
@@ -74,6 +80,8 @@ func New(ctx context.Context, client *teal.Client, opts Options) *Model {
 		be:   be,
 		opts: opts,
 		now:  time.Now,
+		note: "Every call goes to " + opts.BaseURL + ". A search, each page of one and a portrait may be billed; " +
+			"the status line shows what the last call cost.",
 	}
 	m.tabs = []tab{
 		newOverviewTab(be),
@@ -91,12 +99,17 @@ func New(ctx context.Context, client *teal.Client, opts Options) *Model {
 func Run(ctx context.Context, client *teal.Client, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	return runProgram(ctx, New(ctx, client, opts))
+}
+
+// runProgram runs a model full screen until it quits.
+func runProgram(ctx context.Context, m *Model) error {
 	// The adaptive colors need to know whether the background is dark,
 	// which is a question put to the terminal and answered on its input.
 	// Asked here, before the program reads the keyboard, the answer cannot
 	// swallow the first keys somebody presses.
 	lipgloss.HasDarkBackground()
-	p := tea.NewProgram(New(ctx, client, opts), tea.WithAltScreen(), tea.WithContext(ctx))
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
 	_, err := p.Run()
 	if err != nil && ctx.Err() != nil {
 		// Canceled from outside — a signal — which is a way of quitting.
@@ -251,6 +264,15 @@ func (m *Model) View() string {
 }
 
 func (m *Model) header() string {
+	if m.admin {
+		left := styleTitle.Render("celadon admin") + styleMuted.Render(" · "+m.opts.Profile)
+		right := styleMuted.Render(output.Truncate(m.opts.BaseURL, max(m.width-lipgloss.Width(left)-2, 0)))
+		gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+		if gap < 1 {
+			return output.Truncate(left, m.width)
+		}
+		return left + strings.Repeat(" ", gap) + right
+	}
 	left := styleTitle.Render("celadon")
 	if m.app != nil {
 		left += styleMuted.Render(" · ") + styleHeading.Render(output.OneLine(m.app.Name)) +
@@ -304,15 +326,13 @@ func (m *Model) helpView(width, height int) string {
 	var b strings.Builder
 	b.WriteString(styleHeading.Render("Everywhere") + "\n")
 	b.WriteString(renderKeys([]keyHelp{
-		{"1-6", "open a tab"}, {"tab/shift+tab", "next/previous tab"}, {"?", "this help"}, {"q", "quit"}, {"ctrl+c", "quit from anywhere"},
+		{fmt.Sprintf("1-%d", len(m.tabs)), "open a tab"}, {"tab/shift+tab", "next/previous tab"}, {"?", "this help"}, {"q", "quit"}, {"ctrl+c", "quit from anywhere"},
 	}, width) + "\n\n")
 	for i, t := range m.tabs {
 		b.WriteString(styleHeading.Render(fmt.Sprintf("%d %s", i+1, t.title())) + "\n")
 		b.WriteString(renderKeys(t.keys(), width) + "\n")
 	}
-	b.WriteString("\n" + styleMuted.Render(wrapText(
-		"Every call goes to "+m.opts.BaseURL+". A search, each page of one and a portrait may be billed; "+
-			"the status line shows what the last call cost. Press any key to close this help.", width)))
+	b.WriteString("\n" + styleMuted.Render(wrapText(m.note+" Press any key to close this help.", width)))
 	return clip(b.String(), height)
 }
 

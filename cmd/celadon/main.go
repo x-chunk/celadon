@@ -20,7 +20,7 @@ func main() {
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	env := &cli.Env{IO: iostreams.System(), RunTUI: runTUI}
+	env := &cli.Env{IO: iostreams.System(), RunTUI: runTUI, RunAdminTUI: runAdminTUI}
 	return cli.Execute(ctx, env, os.Args[1:])
 }
 
@@ -31,4 +31,14 @@ func runTUI(ctx context.Context, env *cli.Env) error {
 		return err
 	}
 	return tui.Run(ctx, client, tui.Options{Profile: r.Profile, BaseURL: r.BaseURL})
+}
+
+// runAdminTUI opens the admin interface on the profile the command line
+// resolved for the admin API.
+func runAdminTUI(ctx context.Context, env *cli.Env) error {
+	client, r, err := env.AdminClient()
+	if err != nil {
+		return err
+	}
+	return tui.RunAdmin(ctx, client, tui.Options{Profile: r.Profile, BaseURL: r.BaseURL})
 }

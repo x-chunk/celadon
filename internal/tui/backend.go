@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/x-chunk/teal"
+
+	"github.com/x-chunk/celadon/internal/admin"
 )
 
 // requestTimeout bounds every call the interface makes. Nothing here streams,
@@ -18,6 +20,7 @@ const requestTimeout = 30 * time.Second
 type backend struct {
 	ctx     context.Context
 	client  *teal.Client
+	admin   *admin.Client
 	timeout time.Duration
 }
 
@@ -59,6 +62,26 @@ type ack struct{}
 // callAck runs a call that returns only a Meta.
 func callAck(b *backend, op string, seq int, fn func(context.Context, *teal.Client) (*teal.Meta, error)) tea.Cmd {
 	return call(b, op, seq, func(ctx context.Context, c *teal.Client) (ack, *teal.Meta, error) {
+		meta, err := fn(ctx, c)
+		return ack{}, meta, err
+	})
+}
+
+// callAdmin runs a call to the admin API off the event loop and delivers its
+// answer as a done[T], exactly as call does. The admin API bills nothing, so
+// the answer carries no teal Meta.
+func callAdmin[T any](b *backend, op string, seq int, fn func(context.Context, *admin.Client) (T, *admin.Meta, error)) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(b.ctx, b.timeout)
+		defer cancel()
+		v, _, err := fn(ctx, b.admin)
+		return done[T]{op: op, seq: seq, val: v, err: err}
+	}
+}
+
+// callAdminAck runs an admin call that answers with nothing.
+func callAdminAck(b *backend, op string, seq int, fn func(context.Context, *admin.Client) (*admin.Meta, error)) tea.Cmd {
+	return callAdmin(b, op, seq, func(ctx context.Context, c *admin.Client) (ack, *admin.Meta, error) {
 		meta, err := fn(ctx, c)
 		return ack{}, meta, err
 	})

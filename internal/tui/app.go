@@ -60,12 +60,11 @@ type Model struct {
 	width, height int
 	help          bool
 
-	app        *teal.Application
-	balance    string
-	status     string
-	statusErr  bool
-	statusTime time.Time
-	now        func() time.Time
+	app       *teal.Application
+	balance   string
+	status    string
+	statusErr bool
+	now       func() time.Time
 }
 
 // New builds the interface over a client. ctx bounds every request it makes.
@@ -92,6 +91,11 @@ func New(ctx context.Context, client *teal.Client, opts Options) *Model {
 func Run(ctx context.Context, client *teal.Client, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// The adaptive colors need to know whether the background is dark,
+	// which is a question put to the terminal and answered on its input.
+	// Asked here, before the program reads the keyboard, the answer cannot
+	// swallow the first keys somebody presses.
+	lipgloss.HasDarkBackground()
 	p := tea.NewProgram(New(ctx, client, opts), tea.WithAltScreen(), tea.WithContext(ctx))
 	_, err := p.Run()
 	if err != nil && ctx.Err() != nil {
@@ -211,11 +215,10 @@ func (m *Model) noteOutcome(o outcome) {
 		if p.Hint != "" {
 			m.status += " — " + p.Hint
 		}
-		m.statusTime = m.now()
 		return
 	}
 	if line := output.MetaLine(o.metaOf()); line != "" {
-		m.status, m.statusErr, m.statusTime = line, false, m.now()
+		m.status, m.statusErr = line, false
 	} else if m.statusErr {
 		// A call that went through clears the last failure: it is no
 		// longer what is wrong.

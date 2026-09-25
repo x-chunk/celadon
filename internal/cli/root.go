@@ -23,10 +23,10 @@ import (
 // Exit codes. They follow the GitHub CLI's, so scripts written against one
 // read the other.
 const (
-	ExitOK        = 0
-	ExitError     = 1
-	ExitUsage     = 2
-	ExitAuth      = 4
+	ExitOK       = 0
+	ExitError    = 1
+	ExitUsage    = 2
+	ExitAuth     = 4
 	ExitCanceled = 130
 )
 

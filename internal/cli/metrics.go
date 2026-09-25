@@ -62,6 +62,12 @@ _p99 series. Run ` + "`celadon metrics tui`" + ` for the full-screen dashboard.`
 		newMetricsLogoutCmd(env),
 		newMetricsStatusCmd(env),
 		newMetricsHealthCmd(env),
+		newMetricsOverviewCmd(env),
+		newMetricsListCmd(env),
+		newMetricsGetCmd(env),
+		newMetricsQueryCmd(env),
+		newMetricsWatchCmd(env),
+		newMetricsPromCmd(env),
 		newMetricsTUICmd(env),
 	)
 	return cmd

@@ -8,6 +8,7 @@ import (
 	"github.com/x-chunk/teal"
 
 	"github.com/x-chunk/celadon/internal/admin"
+	"github.com/x-chunk/celadon/internal/metrics"
 )
 
 // requestTimeout bounds every call the interface makes. Nothing here streams,
@@ -21,6 +22,7 @@ type backend struct {
 	ctx     context.Context
 	client  *teal.Client
 	admin   *admin.Client
+	metrics *metrics.Client
 	timeout time.Duration
 }
 
@@ -85,4 +87,15 @@ func callAdminAck(b *backend, op string, seq int, fn func(context.Context, *admi
 		meta, err := fn(ctx, c)
 		return ack{}, meta, err
 	})
+}
+
+// callMetrics runs a call to the metrics listener off the event loop and
+// delivers its answer as a done[T], as call does.
+func callMetrics[T any](b *backend, op string, seq int, fn func(context.Context, *metrics.Client) (T, *metrics.Meta, error)) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(b.ctx, b.timeout)
+		defer cancel()
+		v, _, err := fn(ctx, b.metrics)
+		return done[T]{op: op, seq: seq, val: v, err: err}
+	}
 }

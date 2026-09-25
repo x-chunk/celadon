@@ -13,6 +13,7 @@ import (
 	"github.com/x-chunk/teal"
 
 	"github.com/x-chunk/celadon/internal/api"
+	"github.com/x-chunk/celadon/internal/metrics"
 	"github.com/x-chunk/celadon/internal/output"
 )
 
@@ -46,6 +47,9 @@ type Options struct {
 	// Profile and BaseURL are shown in the header.
 	Profile string
 	BaseURL string
+	// Refresh is how often the metrics dashboard refreshes the tab in
+	// front: zero for the default, negative for never.
+	Refresh time.Duration
 }
 
 // Model is the root of the interface.
@@ -63,6 +67,11 @@ type Model struct {
 	// admin marks the admin interface, whose header names the deployment
 	// rather than an application, and whose calls cost nothing.
 	admin bool
+	// metrics marks the metrics dashboard: its header shows readiness, and
+	// a ticker refreshes whichever tab is open.
+	metrics bool
+	ready   *metrics.Readiness
+	refresh time.Duration
 	// note closes the help screen: what the calls cost, and where they go.
 	note string
 
@@ -120,7 +129,18 @@ func runProgram(ctx context.Context, m *Model) error {
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(tea.SetWindowTitle("celadon"), m.start(0))
+	return tea.Batch(tea.SetWindowTitle("celadon"), m.start(0), m.tick())
+}
+
+// tickMsg asks the open tab to refresh what it shows.
+type tickMsg struct{}
+
+// tick schedules the next refresh, when the interface refreshes at all.
+func (m *Model) tick() tea.Cmd {
+	if m.refresh <= 0 {
+		return nil
+	}
+	return tea.Tick(m.refresh, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
 // start opens a tab, loading it the first time.
@@ -161,6 +181,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.tabs[m.active].update(msg)
 
+	case tickMsg:
+		// Only the tab in front refreshes: nobody is looking at the others.
+		return m, tea.Batch(m.tabs[m.active].update(msg), m.tick())
+
 	case openPortraitMsg:
 		i := m.find(insightsTitle)
 		if i < 0 {
@@ -172,6 +196,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if o, ok := msg.(outcome); ok {
 		m.noteOutcome(o)
+	}
+	if d, ok := msg.(done[metrics.Readiness]); ok && d.err == nil {
+		ready := d.val
+		m.ready = &ready
 	}
 	if d, ok := msg.(done[teal.Application]); ok && d.err == nil {
 		app := d.val
@@ -264,6 +292,27 @@ func (m *Model) View() string {
 }
 
 func (m *Model) header() string {
+	if m.metrics {
+		left := styleTitle.Render("celadon metrics") + styleMuted.Render(" · "+m.opts.Profile)
+		state := styleFaint.Render("○ checking")
+		if m.ready != nil {
+			if m.ready.Ready {
+				state = styleOK.Render("● ready")
+			} else {
+				state = styleError.Render("● not ready")
+			}
+		}
+		url := styleMuted.Render(" · " + m.opts.BaseURL)
+		right := state + url
+		if m.width-lipgloss.Width(left)-lipgloss.Width(right) < 1 {
+			right = state
+		}
+		gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+		if gap < 1 {
+			return output.Truncate(left, m.width)
+		}
+		return left + strings.Repeat(" ", gap) + right
+	}
 	if m.admin {
 		left := styleTitle.Render("celadon admin") + styleMuted.Render(" · "+m.opts.Profile)
 		right := styleMuted.Render(output.Truncate(m.opts.BaseURL, max(m.width-lipgloss.Width(left)-2, 0)))

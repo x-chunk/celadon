@@ -20,7 +20,7 @@ func main() {
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	env := &cli.Env{IO: iostreams.System(), RunTUI: runTUI, RunAdminTUI: runAdminTUI}
+	env := &cli.Env{IO: iostreams.System(), RunTUI: runTUI, RunAdminTUI: runAdminTUI, RunMetricsTUI: runMetricsTUI}
 	return cli.Execute(ctx, env, os.Args[1:])
 }
 
@@ -41,4 +41,14 @@ func runAdminTUI(ctx context.Context, env *cli.Env) error {
 		return err
 	}
 	return tui.RunAdmin(ctx, client, tui.Options{Profile: r.Profile, BaseURL: r.BaseURL})
+}
+
+// runMetricsTUI opens the metrics dashboard on the listener the command line
+// resolved.
+func runMetricsTUI(ctx context.Context, env *cli.Env) error {
+	client, r, err := env.MetricsClient()
+	if err != nil {
+		return err
+	}
+	return tui.RunMetrics(ctx, client, tui.Options{Profile: r.Profile, BaseURL: r.BaseURL})
 }

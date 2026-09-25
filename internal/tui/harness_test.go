@@ -26,8 +26,8 @@ type fakeAPI struct {
 }
 
 type seen struct {
-	method, path string
-	body         []byte
+	method, path, query string
+	body                []byte
 }
 
 func newFakeAPI(t *testing.T) *fakeAPI {
@@ -35,7 +35,7 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
-		f.seen = append(f.seen, seen{r.Method, r.URL.Path, body})
+		f.seen = append(f.seen, seen{r.Method, r.URL.Path, r.URL.RawQuery, body})
 		h, ok := f.routes[r.Method+" "+r.URL.Path]
 		f.mu.Unlock()
 		if !ok {

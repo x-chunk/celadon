@@ -1,5 +1,8 @@
 BINARY  := celadon
 PKG     := ./...
+# The toolchain's own gofmt: the one on PATH may predate the go directive,
+# and an older gofmt cannot parse the generic methods Go 1.27 allows.
+GOFMT   := $(shell go env GOROOT)/bin/gofmt
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -38,7 +41,7 @@ cover: ## Run the tests and open the coverage report
 
 .PHONY: fmt
 fmt: ## Format the code
-	gofmt -w .
+	$(GOFMT) -w .
 
 .PHONY: vet
 vet: ## Run go vet
@@ -50,7 +53,7 @@ tidy: ## Tidy go.mod and go.sum
 
 .PHONY: check
 check: ## Verify formatting, tidiness, vet and tests, as CI does
-	@test -z "$$(gofmt -l .)" || { gofmt -l .; echo "run make fmt"; exit 1; }
+	@test -z "$$($(GOFMT) -l .)" || { $(GOFMT) -l .; echo "run make fmt"; exit 1; }
 	go mod tidy -diff
 	go vet $(PKG)
 	go test -race $(PKG)

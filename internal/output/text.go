@@ -6,7 +6,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/x-chunk/teal"
 )
 
@@ -23,7 +23,7 @@ func Sanitize(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	clean := true
 	for _, r := range s {
-		if isHostile(r) {
+		if isHostile(r) || isJoiner(r) {
 			clean = false
 			break
 		}
@@ -32,11 +32,22 @@ func Sanitize(s string) string {
 		return s
 	}
 	return strings.Map(func(r rune) rune {
-		if isHostile(r) {
+		switch {
+		case isHostile(r):
 			return '�'
+		case isJoiner(r):
+			return -1
 		}
 		return r
 	}, s)
+}
+
+// isJoiner reports the marks that fuse emoji into one glyph: the zero-width
+// joiner, variation selectors and skin tones. Terminals disagree on how wide
+// such a cluster is, and a guess that is off by a column leaves the screen
+// half redrawn. Without them every emoji stands alone, two columns wide.
+func isJoiner(r rune) bool {
+	return r == '\u200d' || (r >= '\ufe00' && r <= '\ufe0f') || (r >= 0x1f3fb && r <= 0x1f3ff)
 }
 
 func isHostile(r rune) bool {
@@ -59,19 +70,20 @@ func OneLine(s string) string {
 
 // Truncate cuts s to at most width terminal columns, ending with an ellipsis
 // when it was cut. It counts columns, not bytes or runes: a CJK character
-// takes two and a combining mark none.
+// takes two and a combining mark none. Emoji are measured as whole
+// graphemes, the way lipgloss lays them out, so a row never spills over.
 func Truncate(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	if runewidth.StringWidth(s) <= width {
+	if ansi.StringWidth(s) <= width {
 		return s
 	}
-	return runewidth.Truncate(s, width, "…")
+	return ansi.Truncate(s, width, "…")
 }
 
 // Width is how many terminal columns s takes.
-func Width(s string) int { return runewidth.StringWidth(s) }
+func Width(s string) int { return ansi.StringWidth(s) }
 
 // Dash is what an empty value is shown as.
 const Dash = "—"

@@ -304,7 +304,7 @@ func TestResolvePrecedence(t *testing.T) {
 	}
 }
 
-func TestDefaultDirHonoursTheEnvironment(t *testing.T) {
+func TestDefaultDirHonorsTheEnvironment(t *testing.T) {
 	t.Setenv(EnvHome, "/tmp/celadon-test-home")
 	d, err := DefaultDir()
 	if err != nil {

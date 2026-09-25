@@ -29,7 +29,7 @@ func Explain(err error, now time.Time) Problem {
 		return Problem{}
 	}
 	if errors.Is(err, context.Canceled) {
-		return Problem{Title: "cancelled"}
+		return Problem{Title: "canceled"}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return Problem{Title: "the request timed out", Hint: "raise --timeout, or try again"}

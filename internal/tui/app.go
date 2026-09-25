@@ -95,7 +95,7 @@ func Run(ctx context.Context, client *teal.Client, opts Options) error {
 	p := tea.NewProgram(New(ctx, client, opts), tea.WithAltScreen(), tea.WithContext(ctx))
 	_, err := p.Run()
 	if err != nil && ctx.Err() != nil {
-		// Cancelled from outside — a signal — which is a way of quitting.
+		// Canceled from outside — a signal — which is a way of quitting.
 		return nil
 	}
 	return err

@@ -15,7 +15,7 @@ import (
 func newInsightsCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:     "insights",
-		Short:   "Summarise what the archive holds",
+		Short:   "Summarize what the archive holds",
 		GroupID: groupArchive,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

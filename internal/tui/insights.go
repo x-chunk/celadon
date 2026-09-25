@@ -259,7 +259,7 @@ func portraitView(pt teal.Portrait, width int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// zBar draws how far from the mean a trait sits: a centre line with the
+// zBar draws how far from the mean a trait sits: a center line with the
 // deviation drawn out to one side, three standard deviations to the edge.
 func zBar(z float64, width int) string {
 	half := width / 2

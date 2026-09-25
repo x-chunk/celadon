@@ -27,7 +27,7 @@ const (
 	ExitError     = 1
 	ExitUsage     = 2
 	ExitAuth      = 4
-	ExitCancelled = 130
+	ExitCanceled = 130
 )
 
 // DefaultTimeout bounds a command that does not set --timeout. An export and
@@ -282,7 +282,7 @@ func report(env *Env, err error) int {
 		return silent.code
 	}
 	if errors.Is(err, context.Canceled) {
-		return ExitCancelled
+		return ExitCanceled
 	}
 
 	code := ExitError

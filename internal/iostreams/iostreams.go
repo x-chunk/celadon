@@ -169,7 +169,7 @@ func (s *Streams) ReadAll(limit int64) ([]byte, error) {
 
 func isTerminal(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
 
-// colorAllowed honours the NO_COLOR convention (https://no-color.org) and a
+// colorAllowed honors the NO_COLOR convention (https://no-color.org) and a
 // terminal that says it cannot draw any.
 func colorAllowed() bool {
 	if _, ok := os.LookupEnv("NO_COLOR"); ok {

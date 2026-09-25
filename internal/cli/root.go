@@ -207,6 +207,15 @@ to script it. Start with ` + "`celadon auth login`" + `.`,
 		newTUICmd(env),
 		newVersionCmd(env),
 
+		newSearchCmd(env),
+		newCountCmd(env),
+		newExportCmd(env),
+		newChatsCmd(env),
+		newMessageCmd(env),
+		newFieldsCmd(env),
+		newInsightsCmd(env),
+		newPortraitCmd(env),
+
 		newAppCmd(env),
 		newAccountCmd(env),
 	)

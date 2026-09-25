@@ -17,6 +17,7 @@ import (
 	"github.com/x-chunk/celadon/internal/api"
 	"github.com/x-chunk/celadon/internal/config"
 	"github.com/x-chunk/celadon/internal/iostreams"
+	"github.com/x-chunk/celadon/internal/metrics"
 	"github.com/x-chunk/celadon/internal/output"
 	"github.com/x-chunk/celadon/internal/version"
 )
@@ -52,14 +53,17 @@ type Env struct {
 	RunTUI func(ctx context.Context, env *Env) error
 	// RunAdminTUI starts the admin interface, a seam for the same reasons.
 	RunAdminTUI func(ctx context.Context, env *Env) error
+	// RunMetricsTUI starts the metrics dashboard, a seam for the same reasons.
+	RunMetricsTUI func(ctx context.Context, env *Env) error
 
-	profile string
-	baseURL string
-	format  string
-	quiet   bool
-	noColor bool
-	timeout time.Duration
-	retries int
+	profile    string
+	baseURL    string
+	metricsURL string
+	format     string
+	quiet      bool
+	noColor    bool
+	timeout    time.Duration
+	retries    int
 
 	printer *output.Printer
 	store   *config.Store
@@ -135,6 +139,28 @@ func (e *Env) AdminClient() (*admin.Client, config.AdminResolved, error) {
 		return nil, r, err
 	}
 	c, err := api.NewAdmin(r, api.Options{Retries: e.retries, HTTPClient: e.HTTPClient})
+	return c, r, err
+}
+
+// MetricsResolve settles the profile, listener and token in use.
+func (e *Env) MetricsResolve() (config.MetricsResolved, error) {
+	s, err := e.Store()
+	if err != nil {
+		return config.MetricsResolved{}, err
+	}
+	o := e.Overrides()
+	o.MetricsURL = e.metricsURL
+	return s.ResolveMetrics(o)
+}
+
+// MetricsClient builds a metrics client for the profile in use. A missing
+// token is not an error: the listener may not want one.
+func (e *Env) MetricsClient() (*metrics.Client, config.MetricsResolved, error) {
+	r, err := e.MetricsResolve()
+	if err != nil {
+		return nil, r, err
+	}
+	c, err := api.NewMetrics(r, api.Options{Retries: e.retries, HTTPClient: e.HTTPClient})
 	return c, r, err
 }
 
@@ -250,6 +276,7 @@ to script it. Start with ` + "`celadon auth login`" + `.`,
 		newSettingsCmd(env),
 
 		newAdminCmd(env),
+		newMetricsCmd(env),
 	)
 	markArgErrors(root)
 	return root

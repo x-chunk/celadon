@@ -11,10 +11,11 @@ cmd/gendocs         man pages and completion scripts, for packaging
 internal/
 ├── version         the build's version, from -ldflags or the module info
 ├── admin           a teal-shaped client for the private admin API (/api/admin/promo)
-├── config          ~/.celadon: profiles, key and admin token files, resolution order
+├── metrics         a teal-shaped client for the metrics listener (health through /api)
+├── config          ~/.celadon: profiles, key and token files, resolution order
 ├── iostreams       stdin/stdout/stderr, TTY detection, hidden prompts
-├── output          tables, JSON, sanitizing, formatting money and time
-├── api             the teal and admin clients for a profile; errors explained
+├── output          tables, JSON, sanitizing, formatting money, time and readings; sparklines
+├── api             the teal, admin and metrics clients for a profile; errors explained
 ├── query           filters, one-line queries, durations, promotions and moments, parsed
 ├── cli             one cobra command per API operation
 └── tui             one tab per area of the API
@@ -39,6 +40,20 @@ outcome in the status line — so `*Error` derives its code from the status, and
 admin token registers no admin routes at all. Reads and deletes are retried
 after a server failure or a failed connection; a write never is, since it may
 have arrived before the failure.
+
+## The metrics client
+
+`internal/metrics` is the same shape again for the metrics listener: `Health`
+(`Live`, `Ready`), `Series` (`Info`, `Live`, `Query`, `Stream`) and `Prometheus`
+(`Scrape`) over a generic `Do[T]`. The listener is another port, usually
+reached through a tunnel, with an optional token, and answers in plain JSON:
+refusals are `{ok:false, message}` with a code derived from the status, and a
+503 from `/readyz` is returned as the readiness it carries. Points arrive as
+compact `[ms, avg, min, max, last]` arrays with `null` for a gap, decoded to
+`NaN`; the stream is read as server-sent events; every endpoint is a read, so
+every failure is retried. `api.Unreachable` tells a refused connection to the
+listener apart from the Plug-In API being down, and says how to open the
+tunnel.
 
 ## Command line
 
@@ -66,6 +81,13 @@ sequence number and drops an answer that is not the latest. The root sees
 every `done` through the `outcome` interface to keep the balance and the status
 line current, then broadcasts it to all tabs — a tab left while its call was in
 flight still gets its answer.
+
+`celadon metrics tui` is the same `Model` again, built by `tui.NewMetrics`,
+with a ticker that refreshes only the tab in front and a header showing
+readiness. Its charts are drawn by `chart.go` in braille — two dots across and
+four down per cell — with a value axis, the window along the bottom, stacking
+for stacked panels and a legend of the latest values; its sparklines are
+`output.Sparkline`, which the command line uses too.
 
 `celadon admin tui` is the same `Model` built by `tui.NewAdmin` with the admin
 tabs (campaigns, codes, reference) and a header naming the deployment; its

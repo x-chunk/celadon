@@ -11,8 +11,10 @@ Everything celadon keeps is under one directory: `~/.celadon`, or
 ├── keys/              mode 0700
 │   ├── default        one application key per file, mode 0600
 │   └── work
-└── admin/             mode 0700
-    └── ops            one deployment ADMIN_TOKEN per file, mode 0600
+├── admin/             mode 0700
+│   └── ops            one deployment ADMIN_TOKEN per file, mode 0600
+└── metrics/           mode 0700
+    └── ops            one METRICS_TOKEN per file, mode 0600
 ```
 
 `config.toml` looks like this, and is safe to open, share or sync:
@@ -35,6 +37,7 @@ auth_header = "x-aether-key"
 [profiles.ops]
 base_url = "https://aether.example.com"
 admin_base_url = "https://internal.example.com"
+metrics_url = "http://127.0.0.1:19090"
 ```
 
 `app_id`, `app_name` and `key_prefix` are what the key opened when it was
@@ -46,13 +49,19 @@ default, `Authorization: Bearer …`), `bare` (`Authorization: …`) or
 `/api/admin` somewhere other than the Plug-In API; without it the admin API is
 reached at the profile's `base_url`, which is where Aether serves both.
 
-A profile may hold an application key, an admin token, or both: `auth login`
-stores the one, `admin login` the other, and neither needs the other.
+`metrics_url` is where the metrics listener is: its own port, published on the
+deployment's loopback address, so `http://127.0.0.1:9090` by default — which is
+also where `ssh -N -L 9090:127.0.0.1:9090 host` puts a remote one. It is never
+derived from `base_url`.
+
+A profile may hold an application key, an admin token and a metrics token in
+any combination: `auth login`, `admin login` and `metrics login` each store
+their own, and none needs the others.
 
 ## How the keys and tokens are protected
 
-Admin tokens are kept exactly as keys are, in `admin/<profile>`, and everything
-below holds for both.
+Admin and metrics tokens are kept exactly as keys are, in `admin/<profile>` and
+`metrics/<profile>`, and everything below holds for all three.
 
 - A key is read from a hidden prompt or from standard input. There is no flag
   for it: an argument is visible to every user of the machine through `ps` and
@@ -82,8 +91,11 @@ Highest precedence first:
 | key      | `$CELADON_API_KEY`, `keys/<profile>` |
 | admin API | `--base-url`, `$CELADON_ADMIN_BASE_URL`, the profile's `admin_base_url`, then the base URL as above |
 | admin token | `$CELADON_ADMIN_TOKEN`, `admin/<profile>` |
+| metrics listener | `--metrics-url`, `$CELADON_METRICS_URL`, the profile's `metrics_url`, `http://127.0.0.1:9090` |
+| metrics token | `$CELADON_METRICS_TOKEN`, `metrics/<profile>`, or none |
 
-`auth login` and `admin login` store into the profile the same rules choose,
+`auth login`, `admin login` and `metrics login` store into the profile the
+same rules choose,
 so with a default profile of `work`, a bare `celadon auth login` replaces the
 key of `work`. The
 first profile ever stored becomes the default; `auth switch` or
@@ -94,6 +106,7 @@ A CI job needs no files at all:
 ```sh
 export CELADON_API_KEY=aek_…            # from the CI's secret store
 export CELADON_ADMIN_TOKEN=…            # only for `celadon admin`
+export CELADON_METRICS_URL=http://127.0.0.1:9090   # only for `celadon metrics`
 export CELADON_BASE_URL=https://aether.example.com
 celadon search --where media=photo -o json
 ```

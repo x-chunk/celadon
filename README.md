@@ -70,6 +70,7 @@ celadon auth token           # print the key, for another program
 | Shortcuts  | `actions list`, `view`, `create`, `edit`, `delete`, `placeholders` |
 | Settings   | `settings`, `settings retention`, `vault`, `actions`, `language` |
 | Deployment | `admin login`, `status`, `reference`, `campaigns …`, `codes …`, `admin tui` |
+| Metrics    | `metrics health`, `overview`, `list`, `get`, `query`, `watch`, `prom`, `metrics tui` |
 | Other      | `auth …`, `tui`, `completion`, `version` |
 
 `celadon <command> --help` documents each one, and `man celadon-<command>`
@@ -144,6 +145,23 @@ celadon admin tui                            # the same, full screen
 The token is kept in `~/.celadon/admin/<profile>`, beside the profile, and a
 profile may hold one without an application key. See
 [docs/admin.md](docs/admin.md).
+
+### Watching the process
+
+`celadon metrics` reads the deployment's metrics listener — the port its
+built-in dashboard is served on, reached on the loopback address or through
+an SSH tunnel:
+
+```sh
+ssh -N -L 9090:127.0.0.1:9090 user@app-host  # in another terminal
+celadon metrics health                       # up, ready, and every dependency
+celadon metrics overview                     # the headline numbers with their trend
+celadon metrics query process_cpu_percent --range 6h
+celadon metrics watch                        # live, redrawn in place
+celadon metrics tui                          # the dashboard, with charts
+```
+
+See [docs/metrics.md](docs/metrics.md).
 
 ## The interface
 

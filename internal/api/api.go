@@ -3,14 +3,19 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	neturl "net/url"
 	"time"
 
 	"github.com/x-chunk/teal"
 
 	"github.com/x-chunk/celadon/internal/admin"
 	"github.com/x-chunk/celadon/internal/config"
+	"github.com/x-chunk/celadon/internal/metrics"
 	"github.com/x-chunk/celadon/internal/version"
 )
 
@@ -71,4 +76,57 @@ func NewAdmin(r config.AdminResolved, o Options) (*admin.Client, error) {
 		return nil, fmt.Errorf("building the admin client: %w", err)
 	}
 	return c, nil
+}
+
+// NewMetrics builds a metrics client for a resolved profile. It sends a
+// token only when the profile has one.
+func NewMetrics(r config.MetricsResolved, o Options) (*metrics.Client, error) {
+	opts := []metrics.Option{
+		metrics.WithBaseURL(r.BaseURL),
+		metrics.WithToken(r.Token),
+		metrics.WithUserAgent("celadon/" + version.Get().Version),
+		metrics.WithRetry(o.Retries, 250*time.Millisecond),
+	}
+	if o.HTTPClient != nil {
+		opts = append(opts, metrics.WithHTTPClient(o.HTTPClient))
+	}
+	c, err := metrics.New(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("building the metrics client: %w", err)
+	}
+	return c, nil
+}
+
+// Unreachable says which service could not be reached and what usually
+// fixes it, around the transport's own error. Explain reads it before
+// anything else.
+type Unreachable struct {
+	Service string
+	URL     string
+	Hint    string
+	Err     error
+}
+
+func (u *Unreachable) Error() string {
+	return fmt.Sprintf("could not reach %s at %s: %v", u.Service, u.URL, u.Err)
+}
+
+func (u *Unreachable) Unwrap() error { return u.Err }
+
+// MarkUnreachable wraps err in an Unreachable when it is a failure to reach
+// the service at all — a refused connection, a failed lookup — and returns
+// it unchanged otherwise.
+func MarkUnreachable(err error, service, url, hint string) error {
+	if err == nil {
+		return nil
+	}
+	var urlErr *neturl.Error
+	var netErr net.Error
+	if !errors.As(err, &urlErr) && !errors.As(err, &netErr) {
+		return err
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return &Unreachable{Service: service, URL: url, Hint: hint, Err: err}
 }

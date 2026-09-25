@@ -11,6 +11,7 @@ import (
 	"github.com/x-chunk/teal"
 
 	"github.com/x-chunk/celadon/internal/admin"
+	"github.com/x-chunk/celadon/internal/metrics"
 )
 
 // Problem is a refusal explained: what happened, and what to do about it.
@@ -37,8 +38,15 @@ func Explain(err error, now time.Time) Problem {
 		return Problem{Title: "the request timed out", Hint: "raise --timeout, or try again"}
 	}
 
+	var unreachable *Unreachable
+	if errors.As(err, &unreachable) {
+		return Problem{Title: fmt.Sprintf("could not reach %s at %s: %v", unreachable.Service, unreachable.URL, rootCause(err)), Hint: unreachable.Hint}
+	}
 	if e, ok := admin.AsError(err); ok {
 		return explainAdmin(e)
+	}
+	if e, ok := metrics.AsError(err); ok {
+		return explainMetrics(e)
 	}
 
 	e, ok := teal.AsError(err)
@@ -119,6 +127,27 @@ func explainAdmin(e *admin.Error) Problem {
 			p.Title = "the server failed"
 		}
 		p.Hint = "if it keeps happening, check that promotions are configured on the deployment and read its log"
+	}
+	return p
+}
+
+// explainMetrics explains a refusal of the metrics listener.
+func explainMetrics(e *metrics.Error) Problem {
+	p := Problem{Title: e.Message}
+	if p.Title == "" {
+		p.Title = fmt.Sprintf("the metrics listener refused the request (%s, http %d)", e.Code, e.StatusCode)
+	}
+	switch e.Code {
+	case metrics.CodeUnauthorized:
+		p.Auth = true
+		p.Title = "the metrics listener wants its METRICS_TOKEN"
+		p.Hint = "run `celadon metrics login` with the deployment's METRICS_TOKEN, or set $CELADON_METRICS_TOKEN"
+	case metrics.CodeNotFound:
+		p.Hint = "point --metrics-url (or the profile's metrics_url) at the metrics port, :9090 by default"
+	case metrics.CodeBadRequest:
+		p.Hint = "a range is 15m, 24h or 7d; a series key is written as `celadon metrics list` shows it"
+	case metrics.CodeInternal, metrics.CodeUnavailable:
+		p.Hint = "the listener failed to answer; a range reaching past memory needs the database, see `celadon metrics health`"
 	}
 	return p
 }

@@ -133,3 +133,44 @@ func TestNewAdminAndExplainItsRefusals(t *testing.T) {
 		t.Errorf("unauthorized = %+v", p)
 	}
 }
+
+func TestNewMetricsAndExplainIt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/healthz":
+			w.Write([]byte(`{"ok":true}`))
+		case r.Header.Get("Authorization") != "Bearer tok":
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"ok":false,"message":"unauthorized"}`))
+		default:
+			w.Write([]byte(`{"values":{"x":1}}`))
+		}
+	}))
+	defer srv.Close()
+
+	open, err := NewMetrics(config.MetricsResolved{BaseURL: srv.URL}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := open.Health.Live(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = open.Series.Live(context.Background())
+	if p := Explain(err, time.Now()); !p.Auth || !strings.Contains(p.Hint, "metrics login") {
+		t.Errorf("no token = %+v", p)
+	}
+	withToken, _ := NewMetrics(config.MetricsResolved{BaseURL: srv.URL, Token: "tok"}, Options{})
+	if snap, _, err := withToken.Series.Live(context.Background()); err != nil || snap.Values["x"] != 1 {
+		t.Errorf("live = %+v, %v", snap, err)
+	}
+
+	down, _ := NewMetrics(config.MetricsResolved{BaseURL: "http://127.0.0.1:1"}, Options{})
+	_, _, err = down.Health.Live(context.Background())
+	err = MarkUnreachable(err, "the metrics listener", "http://127.0.0.1:1", "open a tunnel")
+	if p := Explain(err, time.Now()); !strings.Contains(p.Title, "could not reach the metrics listener") || p.Hint != "open a tunnel" {
+		t.Errorf("unreachable = %+v", p)
+	}
+	if MarkUnreachable(context.Canceled, "x", "y", "z") != context.Canceled {
+		t.Error("a cancellation was marked unreachable")
+	}
+}

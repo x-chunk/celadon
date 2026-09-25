@@ -1,9 +1,9 @@
 // Command gendocs writes celadon's man pages and shell completion scripts,
 // for packaging. It is run by `make docs` and by the release build.
 //
-//	go run ./cmd/gendocs -out dist
+//	go run ./cmd/gendocs -out generated
 //
-// writes dist/man/*.1 and dist/completions/celadon.{bash,zsh,fish,ps1}.
+// writes generated/man/*.1 and generated/completions/celadon.{bash,zsh,fish,ps1}.
 package main
 
 import (

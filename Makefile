@@ -56,8 +56,8 @@ check: ## Verify formatting, tidiness, vet and tests, as CI does
 	go test -race $(PKG)
 
 .PHONY: docs
-docs: ## Generate man pages and shell completions into dist/
-	go run ./cmd/gendocs -out dist
+docs: ## Generate man pages and shell completions into generated/
+	go run ./cmd/gendocs -out generated
 
 .PHONY: snapshot
 snapshot: ## Build a local release snapshot with GoReleaser
@@ -65,4 +65,4 @@ snapshot: ## Build a local release snapshot with GoReleaser
 
 .PHONY: clean
 clean: ## Remove build artifacts
-	rm -rf bin dist coverage.out
+	rm -rf bin dist generated coverage.out

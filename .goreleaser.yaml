@@ -1,0 +1,58 @@
+# GoReleaser configuration: https://goreleaser.com
+version: 2
+
+project_name: celadon
+
+before:
+  hooks:
+    - go mod tidy -diff
+    - go run ./cmd/gendocs -out generated
+
+builds:
+  - id: celadon
+    main: ./cmd/celadon
+    binary: celadon
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/x-chunk/celadon/internal/version.Version={{ .Version }}
+      - -X github.com/x-chunk/celadon/internal/version.Commit={{ .FullCommit }}
+      - -X github.com/x-chunk/celadon/internal/version.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: celadon
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE*
+      - README.md
+      - src: generated/man/*
+        dst: man
+        strip_parent: true
+      - src: generated/completions/*
+        dst: completions
+        strip_parent: true
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - Merge pull request
+      - Merge branch

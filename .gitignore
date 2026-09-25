@@ -14,9 +14,8 @@
 coverage.*
 *.coverprofile
 
-# Generated documentation
-/man/
-/completions/
+# Generated man pages and completions
+/generated/
 
 # Go workspace files
 go.work

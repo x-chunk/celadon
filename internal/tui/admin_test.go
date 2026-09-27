@@ -98,8 +98,13 @@ func TestAdminCreateCampaign(t *testing.T) {
 
 	d.send(tea.KeyMsg{Type: tea.KeyCtrlU})
 	d.keys("discount pro:25, grant free:search:daily=unlimited")
-	before := time.Now()
 	d.key(tea.KeyEnter)
+	d.send(tea.KeyMsg{Type: tea.KeyCtrlU}) // clear "off"
+	d.keys("30")
+	d.key(tea.KeyEnter)
+	d.keys("balance all:1, balance pro:2")
+	before := time.Now()
+	d.key(tea.KeyEnter) // the last field submits
 	body := d.body("POST", "/admin/promo/campaigns")
 	if body["kind"] != "event" || body["name"] != "Autumn q" {
 		t.Errorf("create body = %v", body)
@@ -111,9 +116,17 @@ func TestAdminCreateCampaign(t *testing.T) {
 	if want := before.Add(7 * 24 * time.Hour).Unix(); ends < want-5 || ends > want+5 {
 		t.Errorf("ends_at = %d, want about %d", ends, want)
 	}
-	limits := body["benefits"].(map[string]any)["limits"].([]any)
+	benefits := body["benefits"].(map[string]any)
+	limits := benefits["limits"].([]any)
 	if limits[0].(map[string]any)["value"] != float64(-1) {
 		t.Errorf("limits = %v", limits)
+	}
+	if benefits["trial_days"] != float64(30) {
+		t.Errorf("trial_days = %v", benefits["trial_days"])
+	}
+	balances := body["grants"].(map[string]any)["balance_cents"].(map[string]any)
+	if len(balances) != 2 || balances[""] != float64(100) || balances["pro"] != float64(200) {
+		t.Errorf("grants = %v", body["grants"])
 	}
 	if n := len(d.api.called("GET", "/admin/promo/campaigns")); n != 2 {
 		t.Errorf("the list was loaded %d times, want a reload after saving", n)
@@ -197,5 +210,56 @@ func TestAdminReference(t *testing.T) {
 		"max_discount_percent": 90,
 	})
 	d.open("Reference")
-	d.wantView("discountable", "search:daily", "$50.00", "90%")
+	d.wantView("can be discounted or given", "search:daily", "$50.00", "90%")
+}
+
+func TestAdminReferenceNamesTheGiftSets(t *testing.T) {
+	d := newAdminDriver(t)
+	d.api.ok("GET", "/admin/promo/reference", map[string]any{
+		"tiers":             []any{map[string]any{"tier": "pro", "name": "Pro", "price_cents": 899, "paid": true}},
+		"max_gift_cents":    10000000,
+		"subscription_days": []int{1, 3, 7, 14, 30, 90, 365},
+		"trial_days":        []int{14, 30, 90},
+		"any_tier":          "",
+	})
+	d.open("Reference")
+	d.wantView("$100000.00 per account", "1, 3, 7, 14, 30, 90, 365 days", "14, 30, 90 days", "balance all:5")
+}
+
+// An announced event's gifts and trial are frozen. The card says so, the
+// form says so, and an edit that leaves them alone sends neither — the API
+// refuses any change to them, even one that spells the same thing.
+func TestAdminFrozenEvent(t *testing.T) {
+	d := newAdminDriver(t)
+	frozen := map[string]any{
+		"id": 9, "kind": "event", "name": "Gift week", "state": "running", "active": true,
+		"starts_at": 1788000000, "announced_at": 1788000000, "first_announced_at": 1787000000, "generation": 2,
+		"benefits": map[string]any{"trial_days": 30},
+		"grants":   map[string]any{"balance_cents": map[string]any{"": 100, "pro": 200, "ultra": 0}},
+	}
+	d.api.ok("GET", "/admin/promo/campaigns", []any{frozen})
+	d.api.ok("PATCH", "/admin/promo/campaigns/9", frozen)
+	d.keys("r")
+	d.wantView("Gift week", "(announcement 2)", "frozen since the first announcement", "a 30-day trial",
+		"Given once", "+$1.00 balance (every other plan)", "+$2.00 balance (pro)", "no balance (ultra)")
+
+	d.keys("e")
+	d.wantView("Edit campaign #9")
+	for range cfTrial {
+		d.key(tea.KeyTab)
+	}
+	d.wantView("Frozen: the event was announced")
+	d.key(tea.KeyTab)
+	d.wantView("balance all:1, balance pro:2, balance ultra:0")
+
+	d.key(tea.KeyTab) // wraps nowhere: the last field keeps the keyboard
+	for range cfGifts - cfName {
+		d.send(tea.KeyMsg{Type: tea.KeyShiftTab})
+	}
+	d.keys(" 2")
+	d.key(tea.KeyCtrlS)
+	body := d.body("PATCH", "/admin/promo/campaigns/9")
+	if len(body) != 1 || body["name"] != "Gift week 2" {
+		t.Errorf("patch = %v, want only the name", body)
+	}
 }

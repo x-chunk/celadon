@@ -27,6 +27,7 @@ const (
 	kfMax
 	kfLasts
 	kfBenefits
+	kfGifts
 )
 
 // codesTab lists promo codes, who redeemed them, and issues, edits,
@@ -252,6 +253,7 @@ func (t *codesTab) openForm(c *admin.Code) tea.Cmd {
 		formInput("Max", strconv.FormatInt(v.MaxRedemptions, 10), "How many accounts may redeem it; 0 for no cap."),
 		formInput("Lasts", lastsText, "How long the benefits last once redeemed: 30d, 12h, or 0 for as long as the code is valid."),
 		formInput("Benefits", query.FormatBenefits(v.Benefits), "discount all:25, bonus any:10, grant pro:exports:weekly=unlimited — the Reference tab lists the names."),
+		formInput("Gifts", query.FormatGifts(v.Grants), "Given once, on redemption: balance all:5, balance pro:10 (pro:0 leaves Pro out), plan pro:30 for a term of a paid plan. Empty or none gives nothing."),
 	)
 	t.mode = promoForm
 	return t.form.start()
@@ -280,7 +282,12 @@ func (t *codesTab) submit() tea.Cmd {
 		f.err = err
 		return f.move(kfBenefits)
 	}
-	if benefits.Empty() {
+	gifts, err := query.ParseGifts(f.value(kfGifts))
+	if err != nil {
+		f.err = err
+		return f.move(kfGifts)
+	}
+	if benefits.Empty() && gifts.Empty() {
 		f.err = errors.New("a code has to grant something")
 		return f.move(kfBenefits)
 	}
@@ -293,6 +300,9 @@ func (t *codesTab) submit() tea.Cmd {
 			return nil
 		}
 		req := admin.CodeCreateRequest{Name: name, Benefits: benefits, StartsAt: starts, EndsAt: ends}
+		if giftsWritten(gifts) {
+			req.Grants = &gifts
+		}
 		if code != "" {
 			req.Code = &code
 		}
@@ -340,6 +350,9 @@ func (t *codesTab) submit() tea.Cmd {
 	}
 	if !reflect.DeepEqual(benefits, was.Benefits) {
 		req.Benefits = &benefits
+	}
+	if !sameGifts(gifts, was.Grants) {
+		req.Grants = &gifts
 	}
 	req.StartsAt, req.EndsAt = starts, ends
 	if req == (admin.CodeUpdateRequest{}) {
@@ -442,7 +455,7 @@ func (t *codesTab) cardBody(width, height int) string {
 		{"Lasts", lasts + " once redeemed"},
 		{"Updated", output.Time(c.UpdatedAt)},
 	}, width))
-	b.WriteString("\n\n" + styleHeading.Render("Grants") + "\n" + benefitLines(c.Benefits, width))
+	b.WriteString(givesLines(c.Benefits, c.Grants, width))
 	if c.Description != "" {
 		b.WriteString("\n\n" + styleHeading.Render("Description") + "\n" + wrapText(c.Description, width))
 	}
@@ -460,11 +473,13 @@ func (t *codesTab) cardBody(width, height int) string {
 		now := t.now()
 		for _, r := range t.redemptions {
 			expires := "with the code"
-			if r.ExpiresAt != 0 {
+			switch {
+			case r.RevokedAt != 0:
+				expires = "revoked " + output.Time(r.RevokedAt.At())
+			case r.ExpiresAt != 0 && !r.Live(now):
+				expires = "expired " + output.Time(r.ExpiresAt.At())
+			case r.ExpiresAt != 0:
 				expires = "until " + output.Time(r.ExpiresAt.At())
-				if r.ExpiresAt.At().Before(now) {
-					expires = "expired " + output.Time(r.ExpiresAt.At())
-				}
 			}
 			b.WriteString(output.Truncate(fmt.Sprintf("account %-12d %s · %s", r.AccountID, output.Time(r.CreatedAt), expires), width) + "\n")
 		}

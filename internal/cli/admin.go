@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -297,8 +298,10 @@ func newAdminReferenceCmd(env *Env) *cobra.Command {
 		Aliases: []string{"ref"},
 		Short:   "List the plans, quotas and amounts a promotion is written against",
 		Long: `List what a promotion may name, by the names the API accepts: the plans (only
-a paid one can be discounted), the quotas that can be raised, the top-up amounts
-that can carry a bonus, and the ceilings on a discount and a bonus.`,
+a sold one can be discounted or given as a term), the quotas that can be raised,
+the top-up amounts that can carry a bonus, the ceilings on a discount, a bonus
+and a balance gift, the terms a code may give and the trial lengths an event may
+offer.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			c, _, err := env.AdminClient()
@@ -325,13 +328,13 @@ func printReference(env *Env, ref admin.Reference) {
 	p.Heading("Plans")
 	rows := make([][]string, 0, len(ref.Tiers))
 	for _, t := range ref.Tiers {
-		discount := "no (not sold)"
+		sold := "no — cannot be discounted or given"
 		if t.Paid {
-			discount = "yes"
+			sold = "yes"
 		}
-		rows = append(rows, []string{t.Tier, t.Name, output.Cents(t.PriceCents), discount})
+		rows = append(rows, []string{t.Tier, t.Name, output.Cents(t.PriceCents), sold})
 	}
-	p.Table([]string{"tier", "name", "price", "discountable"}, rows)
+	p.Table([]string{"tier", "name", "price", "sold"}, rows)
 
 	p.Println()
 	p.Heading("Quotas")
@@ -352,7 +355,23 @@ func printReference(env *Env, ref admin.Reference) {
 		{Key: "Largest discount", Value: fmt.Sprintf("%d%%", ref.MaxDiscountPercent)},
 		{Key: "Largest bonus", Value: fmt.Sprintf("%d%%", ref.MaxBonusPercent)},
 		{Key: "No ceiling", Value: fmt.Sprintf("%d (written as unlimited)", ref.Unlimited)},
+		{Key: "Largest balance gift", Value: output.Cents(ref.MaxGiftCents) + " per account"},
+		{Key: "Plan terms (codes)", Value: dayList(ref.SubscriptionDays)},
+		{Key: "Trial lengths (events)", Value: dayList(ref.TrialDays)},
+		{Key: "Every plan", Value: fmt.Sprintf("%q (written as all)", ref.AnyTier)},
 	})
+}
+
+// dayList writes a closed set of lengths: "1, 3, 7 days".
+func dayList(set []int) string {
+	if len(set) == 0 {
+		return output.Dash
+	}
+	parts := make([]string, len(set))
+	for i, d := range set {
+		parts[i] = strconv.Itoa(d)
+	}
+	return strings.Join(parts, ", ") + " days"
 }
 
 func newAdminTUICmd(env *Env) *cobra.Command {

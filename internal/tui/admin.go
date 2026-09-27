@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,7 +115,7 @@ func (t *referenceTab) render(width int) string {
 	var b strings.Builder
 	b.WriteString(styleHeading.Render("Plans") + "\n")
 	for _, tier := range r.Tiers {
-		sold := styleOK.Render("discountable")
+		sold := styleOK.Render("sold — can be discounted or given")
 		if !tier.Paid {
 			sold = styleFaint.Render("not sold")
 		}
@@ -137,9 +138,25 @@ func (t *referenceTab) render(width int) string {
 		{"Campaign kinds", output.Or(strings.Join(r.CampaignKinds, ", "))},
 		{"Largest discount", fmt.Sprintf("%d%%", r.MaxDiscountPercent)},
 		{"Largest bonus", fmt.Sprintf("%d%%", r.MaxBonusPercent)},
+		{"Largest balance gift", output.Cents(r.MaxGiftCents) + " per account"},
+		{"Plan terms (codes)", dayList(r.SubscriptionDays)},
+		{"Trial lengths (events)", dayList(r.TrialDays)},
 	}, width))
 	b.WriteString("\n\n" + styleMuted.Render(wrapText("Benefits are written as: discount pro:25, bonus 50:20, grant free:search:daily=200 — all/any for every plan or amount, unlimited for no ceiling.", width)))
+	b.WriteString("\n" + styleMuted.Render(wrapText("Gifts are written as: balance all:5, balance pro:10, plan pro:30 — pro:0 leaves a plan out of a balance for every plan. An event gives only a balance, a code both.", width)))
 	return b.String()
+}
+
+// dayList writes a closed set of lengths: "1, 3, 7 days".
+func dayList(set []int) string {
+	if len(set) == 0 {
+		return output.Dash
+	}
+	parts := make([]string, len(set))
+	for i, d := range set {
+		parts[i] = strconv.Itoa(d)
+	}
+	return strings.Join(parts, ", ") + " days"
 }
 
 // momentText is a timestamp as a form shows it, and as ParseMoment reads it
@@ -156,17 +173,52 @@ func windowText(starts, ends admin.Unix) string {
 	return momentText(starts, "now") + " → " + momentText(ends, "never")
 }
 
-// benefitLines lists what a promotion grants, one benefit to a line.
-func benefitLines(b admin.Benefits, width int) string {
-	desc := query.DescribeBenefits(b)
+// givesLines is a card's account of what a promotion grants while in force
+// and, when it gives anything once, of what it gives: a heading and one item
+// to a line for each.
+func givesLines(b admin.Benefits, g admin.Grants, width int) string {
+	out := "\n\n" + styleHeading.Render("While in force") + "\n" + itemLines(query.DescribeBenefits(b), "grants nothing", width)
+	if !g.Empty() {
+		out += "\n\n" + styleHeading.Render("Given once") + "\n" + itemLines(query.DescribeGifts(g), "gives nothing", width)
+	}
+	return out
+}
+
+// itemLines lists a description's items, one to a line.
+func itemLines(desc, nothing string, width int) string {
 	if desc == "nothing" {
-		return styleMuted.Render("grants nothing")
+		return styleMuted.Render(nothing)
 	}
 	var out []string
 	for _, item := range strings.Split(desc, " · ") {
 		out = append(out, output.Truncate("• "+item, width))
 	}
 	return strings.Join(out, "\n")
+}
+
+// giftsWritten reports whether a form's gifts line named anything at all. A
+// line that names only zeros is sent, for the API to say why it gives
+// nothing, rather than dropped without a word.
+func giftsWritten(g admin.Grants) bool {
+	return len(g.BalanceCents) > 0 || g.Subscription != nil
+}
+
+// sameGifts reports whether a form's gifts are what the promotion already
+// gives, so that an edit sends them only when they changed — an announced
+// event refuses any change to them, even a spelling of the same thing.
+func sameGifts(a, b admin.Grants) bool {
+	if len(a.BalanceCents) != len(b.BalanceCents) {
+		return false
+	}
+	for tier, cents := range a.BalanceCents {
+		if other, ok := b.BalanceCents[tier]; !ok || other != cents {
+			return false
+		}
+	}
+	if (a.Subscription == nil) != (b.Subscription == nil) {
+		return false
+	}
+	return a.Subscription == nil || *a.Subscription == *b.Subscription
 }
 
 // parseWindow reads a form's start and end. On creation a start of "now" is

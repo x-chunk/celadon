@@ -120,3 +120,90 @@ func TestParseMoment(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTrial(t *testing.T) {
+	for in, want := range map[string]int{"30": 30, "90d": 90, " 14 ": 14, "off": 0, "0": 0, "": 0, "none": 0} {
+		got, err := ParseTrial(in)
+		if err != nil || got != want {
+			t.Errorf("ParseTrial(%q) = %d, %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"-30", "a month", "30w"} {
+		if _, err := ParseTrial(bad); err == nil {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+	if FormatTrial(0) != "off" || FormatTrial(30) != "30" {
+		t.Error("FormatTrial does not write what ParseTrial reads")
+	}
+}
+
+func TestParseGifts(t *testing.T) {
+	g, err := ParseGifts("balance all:1, balance Pro:2.50, balance ultra:0, plan pro:30d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := admin.Grants{
+		BalanceCents: map[string]int64{admin.AnyTier: 100, "pro": 250, "ultra": 0},
+		Subscription: &admin.SubscriptionGrant{Tier: "pro", Days: 30},
+	}
+	if !reflect.DeepEqual(g, want) {
+		t.Fatalf("ParseGifts = %+v", g)
+	}
+	line := FormatGifts(g)
+	if line != "balance all:1, balance pro:2.50, balance ultra:0, plan pro:30" {
+		t.Errorf("FormatGifts = %q", line)
+	}
+	if again, err := ParseGifts(line); err != nil || !reflect.DeepEqual(again, g) {
+		t.Errorf("round trip: %q → %+v, %v", line, again, err)
+	}
+	if got := DescribeGifts(g); got != "+$1.00 balance (every other plan) · +$2.50 balance (pro) · no balance (ultra) · 30 days of pro" {
+		t.Errorf("DescribeGifts = %q", got)
+	}
+	if got := DescribeGifts(admin.Grants{BalanceCents: map[string]int64{"": 500}}); got != "+$5.00 balance (every plan)" {
+		t.Errorf("DescribeGifts of a blanket gift = %q", got)
+	}
+
+	for _, none := range []string{"", "  ", "none", "None"} {
+		if g, err := ParseGifts(none); err != nil || !reflect.DeepEqual(g, admin.Grants{}) {
+			t.Errorf("ParseGifts(%q) = %+v, %v", none, g, err)
+		}
+	}
+	for _, bad := range []string{
+		"balance pro",                  // no amount
+		"balance pro:-1",               // negative
+		"balance pro:1.234",            // more than cents
+		"balance pro:nan",              // not a number
+		"balance pro:1, balance PRO:2", // one plan twice
+		"balance all:1, balance any:2", // every plan twice
+		"plan pro",                     // no term
+		"plan all:30",                  // a plan has to be named
+		"plan pro:0",                   // no term at all
+		"plan pro:30, plan go:7",       // two plans
+		"gift pro:30",                  // unknown word
+	} {
+		if _, err := ParseGifts(bad); err == nil {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+}
+
+func TestDescribePromotion(t *testing.T) {
+	b := admin.Benefits{Discounts: []admin.Discount{{Tier: "pro", Percent: 25}}, TrialDays: 30}
+	if got := DescribeBenefits(b); got != "−25% pro · a 30-day trial" {
+		t.Errorf("DescribeBenefits = %q", got)
+	}
+	g := admin.Grants{BalanceCents: map[string]int64{"": 100}}
+	if got := DescribePromotion(b, g); got != "−25% pro · a 30-day trial · +$1.00 balance (every plan)" {
+		t.Errorf("DescribePromotion = %q", got)
+	}
+	if got := DescribePromotion(admin.Benefits{}, g); got != "+$1.00 balance (every plan)" {
+		t.Errorf("DescribePromotion of gifts alone = %q", got)
+	}
+	if DescribePromotion(admin.Benefits{}, admin.Grants{}) != "nothing" {
+		t.Error("a promotion giving nothing is not described as nothing")
+	}
+	if b, err := ParseBenefits("none"); err != nil || !b.Empty() {
+		t.Errorf("ParseBenefits(none) = %+v, %v", b, err)
+	}
+}

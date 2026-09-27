@@ -1,9 +1,12 @@
 package query
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +15,7 @@ import (
 )
 
 // The promotion syntax, shared by the command line's flags and the admin
-// interface's fields:
+// interface's fields. What a promotion grants while it is in force:
 //
 //	discount pro:25          25% off Pro          (all:25 — every plan that is sold)
 //	bonus    50:20           +20% on a $50 top-up (any:20 — every amount)
@@ -22,6 +25,19 @@ import (
 //
 //	discount pro:25, bonus 50:20, grant free:search:daily=200
 //
+// The trial length an event offers belongs to its benefits too, but it is
+// one number rather than a list, so it has a field and a flag of its own
+// (ParseTrial) instead of a place in the line.
+//
+// What a promotion gives once — its gifts, the API's "grants" — is a line of
+// its own, since it is a value of its own:
+//
+//	balance all:5            $5.00 to every plan  (pro:10 for Pro alone; ultra:0 leaves Ultra out)
+//	plan    pro:30           30 days of Pro       (codes only)
+//
+//	balance all:1, balance pro:2, plan pro:30
+//
+// "none" is a line that grants nothing, which is how an edit empties one.
 // Names are passed through as typed: the API checks them against the
 // reference and says which one it does not know.
 
@@ -82,10 +98,13 @@ func ParseGrant(s string) (admin.LimitGrant, error) {
 	return admin.LimitGrant{Tier: tierOf(tier), Limit: strings.ToLower(strings.TrimSpace(limit)), Value: n}, nil
 }
 
-// ParseBenefits reads a comma-separated set of benefits. An empty line is no
-// benefits at all.
+// ParseBenefits reads a comma-separated set of benefits. An empty line, or
+// "none", is no benefits at all.
 func ParseBenefits(line string) (admin.Benefits, error) {
 	var b admin.Benefits
+	if isNone(line) {
+		return b, nil
+	}
 	for item := range strings.SplitSeq(line, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
@@ -120,7 +139,8 @@ func ParseBenefits(line string) (admin.Benefits, error) {
 }
 
 // FormatBenefits writes benefits in the syntax ParseBenefits reads, so a
-// form can be filled with what a promotion already grants.
+// form can be filled with what a promotion already grants. The trial length
+// is not part of the line; FormatTrial writes it.
 func FormatBenefits(b admin.Benefits) string {
 	var items []string
 	for _, d := range b.Discounts {
@@ -152,10 +172,189 @@ func DescribeBenefits(b admin.Benefits) string {
 	for _, g := range b.Limits {
 		items = append(items, fmt.Sprintf("%s → %s (%s)", g.Limit, valueName(g.Value), planWord(g.Tier)))
 	}
+	if b.TrialDays > 0 {
+		items = append(items, fmt.Sprintf("a %d-day trial", b.TrialDays))
+	}
 	if len(items) == 0 {
 		return "nothing"
 	}
 	return strings.Join(items, " · ")
+}
+
+// ParseTrial reads the trial length an event offers, in days: "30" or
+// "30d". "0", "off" and "none" leave the trial as it is. Which lengths are
+// offered is the API's to say (Reference.TrialDays).
+func ParseTrial(s string) (int, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "", "0", "off", "none", "no":
+		return 0, nil
+	}
+	days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+	if err != nil || days <= 0 {
+		return 0, fmt.Errorf("invalid trial %q: write a number of days, e.g. 30, or off", s)
+	}
+	return days, nil
+}
+
+// FormatTrial writes a trial length the way ParseTrial reads it back.
+func FormatTrial(days int) string {
+	if days == 0 {
+		return "off"
+	}
+	return strconv.Itoa(days)
+}
+
+// ParseBalanceGift reads TIER:AMOUNT, the amount in dollars, into g. A plan
+// may be named once; zero leaves it out of a gift written for every plan.
+func ParseBalanceGift(g *admin.Grants, s string) error {
+	tier, amount, ok := strings.Cut(strings.TrimSpace(s), ":")
+	if !ok {
+		return fmt.Errorf("invalid balance gift %q: write TIER:AMOUNT in dollars, e.g. all:5 or pro:10", s)
+	}
+	cents, err := giftDollars(amount)
+	if err != nil {
+		return fmt.Errorf("invalid balance gift %q: %w", s, err)
+	}
+	t := tierOf(tier)
+	if _, dup := g.BalanceCents[t]; dup {
+		return fmt.Errorf("invalid balance gift %q: %s is given a balance twice", s, planWord(t))
+	}
+	if g.BalanceCents == nil {
+		g.BalanceCents = map[string]int64{}
+	}
+	g.BalanceCents[t] = cents
+	return nil
+}
+
+// ParsePlanGift reads TIER:DAYS, a term of a paid plan, into g. A promotion
+// gives one plan at most.
+func ParsePlanGift(g *admin.Grants, s string) error {
+	tier, days, ok := strings.Cut(strings.TrimSpace(s), ":")
+	tier = strings.ToLower(strings.TrimSpace(tier))
+	if !ok || anyWords[tier] {
+		return fmt.Errorf("invalid plan gift %q: write TIER:DAYS, e.g. pro:30", s)
+	}
+	n, err := strconv.Atoi(strings.TrimSuffix(strings.ToLower(strings.TrimSpace(days)), "d"))
+	if err != nil || n <= 0 {
+		return fmt.Errorf("invalid plan gift %q: the term is a positive number of days", s)
+	}
+	if g.Subscription != nil {
+		return fmt.Errorf("invalid plan gift %q: a promotion gives one plan at most", s)
+	}
+	g.Subscription = &admin.SubscriptionGrant{Tier: tier, Days: n}
+	return nil
+}
+
+// ParseGifts reads a comma-separated set of gifts. An empty line, or "none",
+// gives nothing.
+func ParseGifts(line string) (admin.Grants, error) {
+	var g admin.Grants
+	if isNone(line) {
+		return g, nil
+	}
+	for item := range strings.SplitSeq(line, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		word, spec, _ := strings.Cut(item, " ")
+		spec = strings.TrimSpace(spec)
+		var err error
+		switch strings.ToLower(word) {
+		case "balance", "credit":
+			err = ParseBalanceGift(&g, spec)
+		case "plan", "subscription":
+			err = ParsePlanGift(&g, spec)
+		default:
+			err = fmt.Errorf("invalid gift %q: start it with balance or plan", item)
+		}
+		if err != nil {
+			return g, err
+		}
+	}
+	return g, nil
+}
+
+// FormatGifts writes gifts in the syntax ParseGifts reads, every plan first
+// and the rest by name, so the same gifts are always written the same way.
+func FormatGifts(g admin.Grants) string {
+	var items []string
+	for _, tier := range balanceTiers(g) {
+		items = append(items, fmt.Sprintf("balance %s:%s", tierName(tier), giftAmountName(g.BalanceCents[tier])))
+	}
+	if s := g.Subscription; s != nil {
+		items = append(items, fmt.Sprintf("plan %s:%d", s.Tier, s.Days))
+	}
+	return strings.Join(items, ", ")
+}
+
+// DescribeGifts says what gifts give, for a person: "+$1.00 balance (every
+// other plan) · +$2.00 balance (pro) · 30 days of pro".
+func DescribeGifts(g admin.Grants) string {
+	var items []string
+	_, blanket := g.BalanceCents[admin.AnyTier]
+	for _, tier := range balanceTiers(g) {
+		who := planWord(tier)
+		if tier == admin.AnyTier && len(g.BalanceCents) > 1 {
+			who = "every other plan"
+		}
+		cents := g.BalanceCents[tier]
+		switch {
+		case cents > 0:
+			items = append(items, fmt.Sprintf("+%s balance (%s)", centsString(cents), who))
+		case blanket:
+			// A zero is only worth saying where it carves a plan out of a
+			// gift to everybody; alone it is the absence of a gift.
+			items = append(items, fmt.Sprintf("no balance (%s)", who))
+		}
+	}
+	if s := g.Subscription; s != nil {
+		items = append(items, fmt.Sprintf("%d days of %s", s.Days, s.Tier))
+	}
+	if len(items) == 0 {
+		return "nothing"
+	}
+	return strings.Join(items, " · ")
+}
+
+// DescribePromotion says everything a promotion gives, in force and once, on
+// one line.
+func DescribePromotion(b admin.Benefits, g admin.Grants) string {
+	var parts []string
+	for _, desc := range []string{DescribeBenefits(b), DescribeGifts(g)} {
+		if desc != "nothing" {
+			parts = append(parts, desc)
+		}
+	}
+	if len(parts) == 0 {
+		return "nothing"
+	}
+	return strings.Join(parts, " · ")
+}
+
+// balanceTiers are the plans a balance gift names, every plan first and the
+// rest by name.
+func balanceTiers(g admin.Grants) []string {
+	return slices.SortedFunc(maps.Keys(g.BalanceCents), func(a, b string) int {
+		if (a == admin.AnyTier) != (b == admin.AnyTier) {
+			if a == admin.AnyTier {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Compare(a, b)
+	})
+}
+
+// isNone reports whether a line says, in so many words, that it grants
+// nothing.
+func isNone(line string) bool {
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "", "none", "nothing":
+		return true
+	}
+	return false
 }
 
 // ParseMoment reads a point in time as a person types one: "now", a date
@@ -212,12 +411,30 @@ func dollars(s string) (int64, error) {
 		return admin.AnyAmount, nil
 	}
 	f, err := strconv.ParseFloat(s, 64)
-	if err != nil || f <= 0 || math.IsInf(f, 0) {
+	if err != nil || !(f > 0) || math.IsInf(f, 0) {
 		return 0, errors.New("the amount is in dollars, e.g. 50 or 9.99, or any")
 	}
 	cents := math.Round(f * 100)
 	if math.Abs(f*100-cents) > 1e-6 {
 		return 0, errors.New("the amount has more than two decimals")
+	}
+	return int64(cents), nil
+}
+
+// giftDollars reads the amount of a balance gift: dollars with at most two
+// decimals, and zero allowed, since zero is how a plan is left out.
+func giftDollars(s string) (int64, error) {
+	s = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(s)), "$")
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || !(f >= 0) || math.IsInf(f, 0) {
+		return 0, errors.New("the amount is in dollars, e.g. 5 or 2.50, and 0 leaves the plan out")
+	}
+	cents := math.Round(f * 100)
+	if math.Abs(f*100-cents) > 1e-6 {
+		return 0, errors.New("the amount has more than two decimals")
+	}
+	if cents > math.MaxInt64/2 {
+		return 0, errors.New("the amount is too large")
 	}
 	return int64(cents), nil
 }
@@ -252,6 +469,15 @@ func amountName(cents int64) string {
 		return strconv.FormatInt(cents/100, 10)
 	}
 	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
+}
+
+// giftAmountName is amountName for a gift, where zero is an amount — the
+// one that leaves a plan out — rather than "any".
+func giftAmountName(cents int64) string {
+	if cents == 0 {
+		return "0"
+	}
+	return amountName(cents)
 }
 
 func valueName(v int64) string {

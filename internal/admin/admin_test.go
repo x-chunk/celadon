@@ -73,7 +73,9 @@ func TestReference(t *testing.T) {
 			"limits":[{"limit":"search:daily","label":"Searches a day","unit":"searches"}],
 			"top_up_amounts_cents":[500,5000],
 			"campaign_kinds":["offer","event"],
-			"max_discount_percent":90,"max_bonus_percent":500,"unlimited":-1}}`)
+			"max_discount_percent":90,"max_bonus_percent":500,"unlimited":-1,
+			"max_gift_cents":10000000,"subscription_days":[1,3,7,14,30,90,365],
+			"trial_days":[14,30,90],"any_tier":""}}`)
 	})
 	ref, meta, err := client(t, srv.URL).Promo.Reference(context.Background())
 	if err != nil {
@@ -82,6 +84,10 @@ func TestReference(t *testing.T) {
 	if ref.Tiers[0].Tier != "pro" || ref.Limits[0].Key != "search:daily" || ref.TopUpAmountsCents[1] != 5000 ||
 		ref.MaxDiscountPercent != 90 || ref.Unlimited != Unlimited {
 		t.Errorf("reference = %+v", ref)
+	}
+	if ref.MaxGiftCents != 10_000_000 || len(ref.SubscriptionDays) != 7 || ref.SubscriptionDays[6] != 365 ||
+		len(ref.TrialDays) != 3 || ref.TrialDays[0] != 14 || ref.AnyTier != AnyTier {
+		t.Errorf("the gift sets = %+v", ref)
 	}
 	if meta.StatusCode != 200 || meta.Message != "success" {
 		t.Errorf("meta = %+v", meta)
@@ -156,7 +162,7 @@ func TestCampaignCalls(t *testing.T) {
 	if create["kind"] != "event" || create["ends_at"] != float64(1757721600) {
 		t.Errorf("create body = %v", create)
 	}
-	for _, absent := range []string{"starts_at", "active", "description", "announcement"} {
+	for _, absent := range []string{"starts_at", "active", "description", "announcement", "grants"} {
 		if _, has := create[absent]; has {
 			t.Errorf("create body carries %q, which was left out", absent)
 		}
@@ -180,6 +186,98 @@ func TestZeroIsSentWhenItIsSet(t *testing.T) {
 	}
 	if body["ends_at"] != float64(0) || body["max_redemptions"] != float64(0) || len(body) != 2 {
 		t.Errorf("body = %v: a zero that was set must be sent", body)
+	}
+}
+
+// The gifts travel in the shape the API reads and answers them in: the
+// balance keyed by plan with "" for every plan not named, zero kept where it
+// leaves a plan out, and an emptied set sent as an empty object.
+func TestGiftsTravel(t *testing.T) {
+	var body map[string]any
+	srv := server(t, func(w http.ResponseWriter, r *http.Request) {
+		body = nil // Decode merges into a map it is given
+		json.NewDecoder(r.Body).Decode(&body)
+		io.WriteString(w, `{"ok":true,"message":"success","data":{
+			"id":9,"kind":"event","name":"Gift week","active":true,"state":"running",
+			"benefits":{"trial_days":30},
+			"grants":{"balance_cents":{"":100,"pro":200,"ultra":0}},
+			"announced_at":0,"first_announced_at":1787000000,"generation":1}}`)
+	})
+	c := client(t, srv.URL)
+	ctx := context.Background()
+
+	camp, _, err := c.Promo.CreateCampaign(ctx, CampaignCreateRequest{
+		Kind: KindEvent, Name: "Gift week",
+		Benefits: Benefits{TrialDays: 30},
+		Grants:   &Grants{BalanceCents: map[string]int64{AnyTier: 100, "pro": 200, "ultra": 0}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	balances, _ := body["grants"].(map[string]any)["balance_cents"].(map[string]any)
+	if len(balances) != 3 || balances[""] != float64(100) || balances["ultra"] != float64(0) {
+		t.Errorf("create body = %v", body)
+	}
+	if body["benefits"].(map[string]any)["trial_days"] != float64(30) {
+		t.Errorf("the trial was not sent: %v", body)
+	}
+	if !camp.Frozen() || camp.Generation != 1 || camp.Benefits.TrialDays != 30 ||
+		camp.Grants.BalanceCents[AnyTier] != 100 || camp.Grants.Empty() {
+		t.Errorf("campaign = %+v", camp)
+	}
+
+	if _, _, err := c.Promo.UpdateCampaign(ctx, 9, CampaignUpdateRequest{Grants: &Grants{}}); err != nil {
+		t.Fatal(err)
+	}
+	if grants, has := body["grants"].(map[string]any); !has || len(grants) != 0 || len(body) != 1 {
+		t.Errorf("emptying the gifts sent %v, want grants:{} alone", body)
+	}
+
+	if _, _, err := c.Promo.UpdateCode(ctx, "X", CodeUpdateRequest{
+		Grants: &Grants{Subscription: &SubscriptionGrant{Tier: "pro", Days: 30}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := body["grants"].(map[string]any)["subscription"].(map[string]any)
+	if plan["tier"] != "pro" || plan["days"] != float64(30) {
+		t.Errorf("code body = %v", body)
+	}
+}
+
+func TestGrantsEmpty(t *testing.T) {
+	for _, g := range []Grants{{}, {BalanceCents: map[string]int64{}}, {BalanceCents: map[string]int64{"pro": 0}}} {
+		if !g.Empty() {
+			t.Errorf("%+v is not empty", g)
+		}
+	}
+	for _, g := range []Grants{{BalanceCents: map[string]int64{"": 1}}, {Subscription: &SubscriptionGrant{Tier: "go", Days: 1}}} {
+		if g.Empty() {
+			t.Errorf("%+v is empty", g)
+		}
+	}
+	if !(Benefits{}).Empty() || (Benefits{TrialDays: 14}).Empty() {
+		t.Error("a trial is not counted as a benefit")
+	}
+}
+
+func TestRedemptionLive(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	for _, c := range []struct {
+		r    Redemption
+		live bool
+	}{
+		{Redemption{}, true},
+		{Redemption{ExpiresAt: UnixOf(now.Add(time.Hour))}, true},
+		{Redemption{ExpiresAt: UnixOf(now.Add(-time.Hour))}, false},
+		{Redemption{RevokedAt: UnixOf(now.Add(-time.Hour))}, false},
+	} {
+		if got := c.r.Live(now); got != c.live {
+			t.Errorf("%+v.Live = %v", c.r, got)
+		}
+	}
+	var r Redemption
+	if err := json.Unmarshal([]byte(`{"account_id":1,"benefits_revoked_at":1788000000}`), &r); err != nil || r.RevokedAt != 1788000000 {
+		t.Errorf("benefits_revoked_at = %+v, %v", r, err)
 	}
 }
 

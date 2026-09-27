@@ -131,7 +131,9 @@ alone.
 ### Administering a deployment
 
 With the deployment's `ADMIN_TOKEN`, `celadon admin` manages its promotions:
-campaigns everybody gets and promo codes whoever redeems them gets.
+campaigns everybody gets and promo codes whoever redeems them gets — what they
+grant while in force (discounts, bonuses, raised ceilings, a longer trial for an
+event) and the gifts they give once (a balance, a term of a paid plan).
 
 ```sh
 celadon admin login --base-url https://aether.example.com
@@ -139,6 +141,7 @@ celadon admin reference                      # plans, quotas and amounts by thei
 celadon admin campaigns create --kind event --name "Summer week" \
   --starts 2026-10-01 --for 7d --discount pro:25 --bonus 50:20
 celadon admin codes create SUMMER25 --name "Summer sale" --max 100 --lasts 30d --discount all:25
+celadon admin codes create MONTHOFPRO --name "A month of Pro" --gift-plan pro:30
 celadon admin tui                            # the same, full screen
 ```
 

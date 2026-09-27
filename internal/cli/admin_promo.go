@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,23 +16,52 @@ import (
 	"github.com/x-chunk/celadon/internal/query"
 )
 
-const benefitsHelp = `Benefits are given as repeatable flags, or all at once:
+const benefitsHelp = `What a promotion grants while it is in force is given as repeatable flags, or
+all at once:
 
   --discount TIER:PERCENT        25% off Pro: pro:25; every plan that is sold: all:25
   --bonus    AMOUNT:PERCENT      +20% on a $50 top-up: 50:20; every amount: any:20
   --grant    TIER:LIMIT=VALUE    free:search:daily=200; no ceiling: …=unlimited
   --benefits LINE                "discount pro:25, bonus 50:20, grant free:search:daily=200"
   --benefits-file FILE           the benefits object as JSON (- for standard input)
+`
 
-` + "`celadon admin reference`" + ` lists the tiers, quotas and amounts by the names accepted.
+const trialHelp = `  --trial DAYS                   events: the trial lasts 14, 30 or 90 days while it runs; off
+                                 for the usual length
+`
+
+const giftsHelp = `
+What it gives once — to whoever redeems a code, or to every account an event
+reaches that existed when it started — is given the same way:
+
+  --gift-balance TIER:AMOUNT     $5 to every plan: all:5; $10 on Pro: pro:10; none on Ultra: ultra:0
+`
+
+const planHelp = `  --gift-plan TIER:DAYS          codes: a term of a paid plan, e.g. pro:30
+`
+
+const giftsTail = `  --gifts LINE                   "balance all:5, balance pro:10"; none gives nothing
+  --gifts-file FILE              the grants object as JSON (- for standard input)
+
+` + "`celadon admin reference`" + ` lists the tiers, quotas, amounts, terms and trial lengths
+by the names accepted.
 
 Times take now, never, 2026-10-01, "2026-10-01 18:00" (local time), RFC 3339, or
 a span from now such as +7d; --for sets the end as a span from the start.`
 
-// maxBenefitsFile bounds a benefits file; the server reads a megabyte at most.
-const maxBenefitsFile = 1 << 20
+// campaignHelp and codeHelp are the flag reference of each: an event may
+// lengthen the trial and give a balance, a code may give a balance and a plan.
+var (
+	campaignHelp = benefitsHelp + trialHelp + giftsHelp + giftsTail
+	codeHelp     = benefitsHelp + giftsHelp + planHelp + giftsTail
+)
 
-// promoFlags are the flags campaigns and codes share.
+// maxPromoFile bounds a benefits or gifts file; the server reads a megabyte
+// at most.
+const maxPromoFile = 1 << 20
+
+// promoFlags are the flags campaigns and codes share, and the one each has of
+// its own: --trial for a campaign, --gift-plan for a code.
 type promoFlags struct {
 	name, description string
 	discounts         []string
@@ -39,84 +69,192 @@ type promoFlags struct {
 	grants            []string
 	benefitsLine      string
 	benefitsFile      string
+	trial             string
+	balances          []string
+	plans             []string
+	giftsLine         string
+	giftsFile         string
 	starts, ends, dur string
 	dryRun            bool
+
+	cmd *cobra.Command
 }
 
-func (f *promoFlags) register(cmd *cobra.Command) {
+// promoFor is what a promoFlags is registered for.
+type promoFor int
+
+const (
+	forCampaign promoFor = iota
+	forCode
+)
+
+func (f *promoFlags) register(cmd *cobra.Command, what promoFor) {
+	f.cmd = cmd
 	fs := cmd.Flags()
 	fs.StringVar(&f.name, "name", "", "the name (up to 64 characters)")
 	fs.StringVar(&f.description, "description", "", "what it is, as users will read it (up to 512 characters)")
 	fs.StringArrayVar(&f.discounts, "discount", nil, "a discount, TIER:PERCENT (repeatable)")
 	fs.StringArrayVar(&f.bonuses, "bonus", nil, "a top-up bonus, AMOUNT:PERCENT with the amount in dollars (repeatable)")
 	fs.StringArrayVar(&f.grants, "grant", nil, "a raised ceiling, TIER:LIMIT=VALUE (repeatable)")
-	fs.StringVar(&f.benefitsLine, "benefits", "", "every benefit on one line, comma-separated")
+	fs.StringVar(&f.benefitsLine, "benefits", "", "every benefit on one line, comma-separated; none for no benefits")
 	fs.StringVar(&f.benefitsFile, "benefits-file", "", "the benefits as JSON (- for standard input)")
+	fs.StringArrayVar(&f.balances, "gift-balance", nil, "a balance given once, TIER:AMOUNT with the amount in dollars (repeatable)")
+	fs.StringVar(&f.giftsLine, "gifts", "", "every gift on one line, comma-separated; none for no gifts")
+	fs.StringVar(&f.giftsFile, "gifts-file", "", "the gifts (the API's grants object) as JSON (- for standard input)")
+	switch what {
+	case forCampaign:
+		fs.StringVar(&f.trial, "trial", "", "days the trial lasts while an event runs; off for the usual length")
+	case forCode:
+		// An array, so that a second plan is refused rather than silently
+		// taking the first one's place.
+		fs.StringArrayVar(&f.plans, "gift-plan", nil, "a term of a paid plan given once, TIER:DAYS")
+	}
 	fs.StringVar(&f.starts, "starts", "", "when it starts (default now)")
 	fs.StringVar(&f.ends, "ends", "", "when it ends (default never)")
 	fs.StringVar(&f.dur, "for", "", "how long it runs, from --starts or from now: 7d, 36h")
 	fs.BoolVar(&f.dryRun, "dry-run", false, "print the request body instead of sending it")
 }
 
-// benefitsGiven reports whether any benefit flag was given.
-func (f *promoFlags) benefitsGiven() bool {
-	return len(f.discounts)+len(f.bonuses)+len(f.grants) > 0 || f.benefitsLine != "" || f.benefitsFile != ""
+func (f *promoFlags) changed(name string) bool {
+	fl := f.cmd.Flags().Lookup(name)
+	return fl != nil && fl.Changed
 }
 
-// benefits reads the benefit flags into one set, nil when none was given.
-func (f *promoFlags) benefits(env *Env) (*admin.Benefits, error) {
-	if !f.benefitsGiven() {
-		return nil, nil
-	}
+// listsGiven reports whether any flag was given for the lists of benefits:
+// the discounts, the bonuses and the raised ceilings.
+func (f *promoFlags) listsGiven() bool {
+	return len(f.discounts)+len(f.bonuses)+len(f.grants) > 0 || f.changed("benefits")
+}
+
+// benefitsRead is what the benefit flags said, and which parts of the
+// benefits they said it about.
+type benefitsRead struct {
+	benefits admin.Benefits
+	// lists is set when the discounts, bonuses and ceilings were given.
+	lists bool
+	// trial is set when the trial length was given.
+	trial bool
+}
+
+// given reports whether the flags said anything about the benefits.
+func (r benefitsRead) given() bool { return r.lists || r.trial }
+
+// benefits reads the benefit flags and --trial. A --benefits-file is the
+// whole benefits object, the trial length included, so it gives both parts.
+func (f *promoFlags) benefits(env *Env) (benefitsRead, error) {
 	if f.benefitsFile != "" {
-		if len(f.discounts)+len(f.bonuses)+len(f.grants) > 0 || f.benefitsLine != "" {
-			return nil, usageError(errors.New("--benefits-file cannot be combined with the other benefit flags"))
-		}
-		var raw []byte
-		var err error
-		if f.benefitsFile == "-" {
-			raw, err = env.IO.ReadAll(maxBenefitsFile)
-		} else {
-			raw, err = readFileCapped(f.benefitsFile, maxBenefitsFile)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("reading the benefits: %w", err)
+		if f.listsGiven() || f.changed("trial") {
+			return benefitsRead{}, usageError(errors.New("--benefits-file cannot be combined with the other benefit flags or --trial"))
 		}
 		var b admin.Benefits
-		dec := json.NewDecoder(strings.NewReader(string(raw)))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&b); err != nil {
-			return nil, usageError(fmt.Errorf("the benefits file is not a benefits object: %w", err))
+		if err := readPromoFile(env, f.benefitsFile, "benefits", &b); err != nil {
+			return benefitsRead{}, err
 		}
-		return &b, nil
+		return benefitsRead{benefits: b, lists: true, trial: true}, nil
 	}
 
+	r := benefitsRead{lists: f.listsGiven(), trial: f.changed("trial")}
 	b, err := query.ParseBenefits(f.benefitsLine)
 	if err != nil {
-		return nil, usageError(err)
+		return r, usageError(err)
 	}
 	for _, s := range f.discounts {
 		d, err := query.ParseDiscount(s)
 		if err != nil {
-			return nil, usageError(err)
+			return r, usageError(err)
 		}
 		b.Discounts = append(b.Discounts, d)
 	}
 	for _, s := range f.bonuses {
 		x, err := query.ParseBonus(s)
 		if err != nil {
-			return nil, usageError(err)
+			return r, usageError(err)
 		}
 		b.TopUps = append(b.TopUps, x)
 	}
 	for _, s := range f.grants {
 		g, err := query.ParseGrant(s)
 		if err != nil {
-			return nil, usageError(err)
+			return r, usageError(err)
 		}
 		b.Limits = append(b.Limits, g)
 	}
-	return &b, nil
+	if r.trial {
+		if b.TrialDays, err = query.ParseTrial(f.trial); err != nil {
+			return r, usageError(err)
+		}
+	}
+	r.benefits = b
+	return r, nil
+}
+
+// gifts reads the gift flags into one set, nil when none was given. On an
+// edit a set replaces what the promotion gives as a whole; --gifts none
+// empties it.
+func (f *promoFlags) gifts(env *Env) (*admin.Grants, error) {
+	flags := len(f.balances)+len(f.plans) > 0 || f.changed("gifts")
+	if f.giftsFile != "" {
+		if flags {
+			return nil, usageError(errors.New("--gifts-file cannot be combined with the other gift flags"))
+		}
+		if f.giftsFile == "-" && f.benefitsFile == "-" {
+			return nil, usageError(errors.New("--benefits-file and --gifts-file cannot both be read from standard input"))
+		}
+		var g admin.Grants
+		if err := readPromoFile(env, f.giftsFile, "gifts", &g); err != nil {
+			return nil, err
+		}
+		return &g, nil
+	}
+	if !flags {
+		return nil, nil
+	}
+	g, err := query.ParseGifts(f.giftsLine)
+	if err != nil {
+		return nil, usageError(err)
+	}
+	for _, s := range f.balances {
+		if err := query.ParseBalanceGift(&g, s); err != nil {
+			return nil, usageError(err)
+		}
+	}
+	for _, s := range f.plans {
+		if err := query.ParsePlanGift(&g, s); err != nil {
+			return nil, usageError(err)
+		}
+	}
+	return &g, nil
+}
+
+// readPromoFile decodes a JSON file named by a flag — standard input for "-"
+// — into v, refusing a field v does not have: a typo in a file is a
+// promotion that silently grants less than it says.
+func readPromoFile(env *Env, path, what string, v any) error {
+	var raw []byte
+	var err error
+	if path == "-" {
+		raw, err = env.IO.ReadAll(maxPromoFile)
+	} else {
+		raw, err = readFileCapped(path, maxPromoFile)
+	}
+	if err != nil {
+		return fmt.Errorf("reading the %s: %w", what, err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return usageError(fmt.Errorf("the %s file is not a %s object: %w", what, what, err))
+	}
+	if dec.More() {
+		return usageError(fmt.Errorf("the %s file holds more than one %s object", what, what))
+	}
+	return nil
+}
+
+// nothingGranted reports whether a new promotion would grant nothing at all,
+// in force or once.
+func nothingGranted(b admin.Benefits, g *admin.Grants) bool {
+	return b.Empty() && (g == nil || g.Empty())
 }
 
 // window reads --starts, --ends and --for into the request's two fields.
@@ -239,10 +377,10 @@ func newCampaignListCmd(env *Env) *cobra.Command {
 				for _, c := range list {
 					rows = append(rows, []string{
 						strconv.FormatInt(c.ID, 10), c.Kind, c.State, c.Name,
-						window(c.StartsAt, c.EndsAt), fit(env, query.DescribeBenefits(c.Benefits), 90),
+						window(c.StartsAt, c.EndsAt), fit(env, query.DescribePromotion(c.Benefits, c.Grants), 90),
 					})
 				}
-				p.Table([]string{"id", "kind", "state", "name", "runs", "grants"}, rows)
+				p.Table([]string{"id", "kind", "state", "name", "runs", "gives"}, rows)
 				return nil
 			})
 		},
@@ -307,34 +445,60 @@ func newCampaignViewCmd(env *Env) *cobra.Command {
 func printCampaign(env *Env, c admin.Campaign) {
 	p := env.Printer()
 	p.Heading(fmt.Sprintf("%s (#%d)", c.Name, c.ID))
-	announced := output.Dash
-	if c.AnnouncedAt != 0 {
-		announced = output.Time(c.AnnouncedAt.At())
-	} else if c.Kind == admin.KindEvent {
-		announced = "not yet"
-	}
-	p.Details([]output.KV{
+	details := []output.KV{
 		{Key: "Kind", Value: c.Kind},
 		{Key: "State", Value: c.State},
 		{Key: "Runs", Value: window(c.StartsAt, c.EndsAt)},
-		{Key: "Announced", Value: announced},
-		{Key: "Description", Value: output.Or(c.Description)},
-		{Key: "Announcement", Value: output.Or(c.Announcement)},
-		{Key: "Created", Value: output.Time(c.CreatedAt)},
-		{Key: "Updated", Value: output.Time(c.UpdatedAt)},
-	})
-	printBenefits(env, c.Benefits)
+		{Key: "Announced", Value: announced(c)},
+	}
+	if c.Frozen() {
+		details = append(details, output.KV{Key: "Gifts", Value: "frozen: an announced event keeps its gifts and trial length"})
+	}
+	p.Details(append(details,
+		output.KV{Key: "Description", Value: output.Or(c.Description)},
+		output.KV{Key: "Announcement", Value: output.Or(c.Announcement)},
+		output.KV{Key: "Created", Value: output.Time(c.CreatedAt)},
+		output.KV{Key: "Updated", Value: output.Time(c.UpdatedAt)},
+	))
+	printGives(env, c.Benefits, c.Grants)
 }
 
-func printBenefits(env *Env, b admin.Benefits) {
+// announced says where a campaign's announcement stands. An event moved into
+// the future is announced again when it arrives, as a new generation.
+func announced(c admin.Campaign) string {
+	switch {
+	case c.AnnouncedAt != 0:
+		at := output.Time(c.AnnouncedAt.At())
+		if c.Generation > 1 {
+			at += fmt.Sprintf(" (announcement %d)", c.Generation)
+		}
+		return at
+	case c.FirstAnnouncedAt != 0:
+		return "not yet again — first " + output.Time(c.FirstAnnouncedAt.At())
+	case c.Kind == admin.KindEvent:
+		return "not yet"
+	}
+	return output.Dash
+}
+
+// printGives lists what a promotion grants while it is in force and, when
+// it gives anything once, what it gives.
+func printGives(env *Env, b admin.Benefits, g admin.Grants) {
+	printItems(env, "While in force", query.DescribeBenefits(b))
+	if !g.Empty() {
+		printItems(env, "Given once", query.DescribeGifts(g))
+	}
+}
+
+func printItems(env *Env, heading, desc string) {
 	p := env.Printer()
 	p.Println()
-	p.Heading("Grants")
-	if b.Empty() {
+	p.Heading(heading)
+	if desc == "nothing" {
 		p.Println("  nothing")
 		return
 	}
-	for _, item := range strings.Split(query.DescribeBenefits(b), " · ") {
+	for _, item := range strings.Split(desc, " · ") {
 		p.Println("  •", item)
 	}
 }
@@ -349,11 +513,15 @@ func newCampaignCreateCmd(env *Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a campaign",
-		Long:  "Create a campaign. It starts now and never ends unless told otherwise.\n\n" + benefitsHelp,
+		Long: "Create a campaign. It starts now and never ends unless told otherwise.\n\n" +
+			"An offer grants only what is in force; an event may also lengthen the trial and\n" +
+			"give a balance, once, to every account that existed when it started.\n\n" + campaignHelp,
 		Example: `  celadon admin campaigns create --kind event --name "Summer week" \
     --starts 2026-10-01 --for 7d \
     --discount pro:25 --bonus 50:20 --grant free:search:daily=200 \
     --announcement "Tell a friend — the link in your profile pays you back."
+  celadon admin campaigns create --kind event --name "Birthday" --for 3d \
+    --trial 30 --gift-balance all:1 --gift-balance pro:2
   celadon admin campaigns create --name "Autumn offer" --discount all:10 --dry-run`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -367,15 +535,19 @@ func newCampaignCreateCmd(env *Env) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if b == nil || b.Empty() {
-				return usageError(errors.New("a campaign has to grant something: give --discount, --bonus or --grant"))
+			gifts, err := f.gifts(env)
+			if err != nil {
+				return err
+			}
+			if nothingGranted(b.benefits, gifts) {
+				return usageError(errors.New("a campaign has to grant something: give --discount, --bonus, --grant, --trial or --gift-balance"))
 			}
 			starts, ends, err := f.window(cmd, true, adminNow(env))
 			if err != nil {
 				return err
 			}
 			req := admin.CampaignCreateRequest{
-				Kind: kind, Name: strings.TrimSpace(f.name), Benefits: *b,
+				Kind: kind, Name: strings.TrimSpace(f.name), Benefits: b.benefits, Grants: gifts,
 				Description:  optional(cmd, "description", f.description),
 				Announcement: optional(cmd, "announcement", announcement),
 				StartsAt:     starts, EndsAt: ends,
@@ -403,7 +575,7 @@ func newCampaignCreateCmd(env *Env) *cobra.Command {
 			})
 		},
 	}
-	f.register(cmd)
+	f.register(cmd, forCampaign)
 	cmd.Flags().StringVar(&kind, "kind", admin.KindOffer, "offer (quiet) or event (announced when it starts)")
 	cmd.Flags().StringVar(&announcement, "announcement", "", "a line added to an event's announcement")
 	cmd.Flags().BoolVar(&inactive, "inactive", false, "create it stopped")
@@ -421,11 +593,16 @@ func newCampaignEditCmd(env *Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edit <id>",
 		Short: "Change a campaign",
-		Long: "Change a campaign. Only what is given is written; benefit flags replace the\n" +
-			"campaign's benefits as a whole. Moving the start of an event into the future\n" +
-			"has it announce itself again when it arrives.\n\n" + benefitsHelp,
+		Long: "Change a campaign. Only what is given is written. Benefit flags replace the\n" +
+			"discounts, bonuses and ceilings as a whole and keep the trial length; --trial\n" +
+			"changes the trial and keeps the rest (either reads the campaign first, and a\n" +
+			"--benefits-file replaces all of it). Gift flags replace the gifts as a whole.\n\n" +
+			"Moving the start of an event into the future has it announce itself again\n" +
+			"when it arrives. Once an event has been announced its gifts and its trial\n" +
+			"length are frozen; its words, dates and switch are not.\n\n" + campaignHelp,
 		Example: `  celadon admin campaigns edit 7 --ends +3d
-  celadon admin campaigns edit 7 --discount pro:30 --discount go:15`,
+  celadon admin campaigns edit 7 --discount pro:30 --discount go:15
+  celadon admin campaigns edit 7 --trial 90 --gifts none`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID("campaign id", args[0])
@@ -433,6 +610,10 @@ func newCampaignEditCmd(env *Env) *cobra.Command {
 				return err
 			}
 			b, err := f.benefits(env)
+			if err != nil {
+				return err
+			}
+			gifts, err := f.gifts(env)
 			if err != nil {
 				return err
 			}
@@ -445,8 +626,11 @@ func newCampaignEditCmd(env *Env) *cobra.Command {
 				Name:         optional(cmd, "name", strings.TrimSpace(f.name)),
 				Description:  optional(cmd, "description", f.description),
 				Announcement: optional(cmd, "announcement", announcement),
-				Benefits:     b,
+				Grants:       gifts,
 				StartsAt:     starts, EndsAt: ends,
+			}
+			if b.given() {
+				req.Benefits = &b.benefits
 			}
 			if req.Kind != nil && *req.Kind != admin.KindOffer && *req.Kind != admin.KindEvent {
 				return usageError(fmt.Errorf("invalid --kind %q: use offer or event", kind))
@@ -457,7 +641,14 @@ func newCampaignEditCmd(env *Env) *cobra.Command {
 			if req == (admin.CampaignUpdateRequest{}) {
 				return usageError(errors.New("nothing to change: give at least one flag"))
 			}
-			if f.dryRun {
+			// The API replaces the benefits as a whole, the trial length
+			// with them. Flags that name only one of the two parts keep the
+			// other as the campaign has it — which is also what keeps an
+			// announced event's frozen trial from reading as a change. A dry
+			// run reads the campaign too, so that it prints what would be
+			// sent.
+			merge := b.lists != b.trial
+			if f.dryRun && !merge {
 				return dryRun(env, "PATCH", fmt.Sprintf("/admin/promo/campaigns/%d", id), req)
 			}
 			c, _, err := env.AdminClient()
@@ -466,6 +657,16 @@ func newCampaignEditCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
+			if merge {
+				camp, _, err := c.Promo.Campaign(ctx, id)
+				if err != nil {
+					return fmt.Errorf("reading the campaign's benefits to keep what was not given: %w", err)
+				}
+				req.Benefits = admin.Ptr(mergeBenefits(camp.Benefits, b))
+			}
+			if f.dryRun {
+				return dryRun(env, "PATCH", fmt.Sprintf("/admin/promo/campaigns/%d", id), req)
+			}
 			camp, _, err := c.Promo.UpdateCampaign(ctx, id, req)
 			if err != nil {
 				return err
@@ -477,11 +678,25 @@ func newCampaignEditCmd(env *Env) *cobra.Command {
 			})
 		},
 	}
-	f.register(cmd)
+	f.register(cmd, forCampaign)
 	cmd.Flags().StringVar(&kind, "kind", "", "offer or event")
 	cmd.Flags().StringVar(&announcement, "announcement", "", "a line added to an event's announcement")
 	cmd.Flags().BoolVar(&active, "active", true, "run it (true) or stop it (false)")
 	return cmd
+}
+
+// mergeBenefits is the campaign's benefits with the part the flags gave put
+// in place of its own.
+func mergeBenefits(current admin.Benefits, read benefitsRead) admin.Benefits {
+	if !read.lists {
+		current.TrialDays = read.benefits.TrialDays
+		return current
+	}
+	merged := read.benefits
+	if !read.trial {
+		merged.TrialDays = current.TrialDays
+	}
+	return merged
 }
 
 func newCampaignActiveCmd(env *Env, verb string, active bool) *cobra.Command {
@@ -562,8 +777,9 @@ func newAdminCodesCmd(env *Env) *cobra.Command {
 		Aliases: []string{"code"},
 		Short:   "Issue and manage promo codes",
 		Long: `Promo codes grant their benefits to whoever redeems them, for as long as the
-code says. A code is looked up the way a user types it: "summer-25" finds
-SUMMER25.`,
+code says, and give their gifts — a balance, a term of a paid plan — once, when
+they are redeemed. A code is looked up the way a user types it: "summer-25"
+finds SUMMER25.`,
 	}
 	cmd.AddCommand(
 		newCodeListCmd(env),
@@ -615,10 +831,10 @@ func newCodeListCmd(env *Env) *cobra.Command {
 				for _, c := range list {
 					rows = append(rows, []string{
 						c.Code, c.Name, redeemed(c), activeWord(c.Active), window(c.StartsAt, c.EndsAt),
-						lasts(c.Duration), fit(env, query.DescribeBenefits(c.Benefits), 100),
+						lasts(c.Duration), fit(env, query.DescribePromotion(c.Benefits, c.Grants), 100),
 					})
 				}
-				p.Table([]string{"code", "name", "redeemed", "state", "valid", "lasts", "grants"}, rows)
+				p.Table([]string{"code", "name", "redeemed", "state", "valid", "lasts", "gives"}, rows)
 				return nil
 			})
 		},
@@ -687,7 +903,7 @@ func printCode(env *Env, c admin.Code) {
 		{Key: "Created", Value: output.Time(c.CreatedAt)},
 		{Key: "Updated", Value: output.Time(c.UpdatedAt)},
 	})
-	printBenefits(env, c.Benefits)
+	printGives(env, c.Benefits, c.Grants)
 }
 
 // codeFlags are what a code has beyond what every promotion has.
@@ -729,9 +945,11 @@ func newCodeCreateCmd(env *Env) *cobra.Command {
 		Short: "Issue a promo code",
 		Long: "Issue a promo code. Leave the code out to have one drawn (ten characters\n" +
 			"nobody misreads). It is valid from now, forever, for everybody, and its\n" +
-			"benefits last as long as it does, unless told otherwise.\n\n" + benefitsHelp,
+			"benefits last as long as it does, unless told otherwise. Its gifts are given\n" +
+			"once, when it is redeemed, and stay.\n\n" + codeHelp,
 		Example: `  celadon admin codes create SUMMER25 --name "Summer sale" --max 100 --lasts 30d --discount all:25
-  celadon admin codes create --name "Support goodwill" --grant all:search:daily=unlimited --lasts 7d`,
+  celadon admin codes create --name "Support goodwill" --grant all:search:daily=unlimited --lasts 7d
+  celadon admin codes create MONTHOFPRO --name "A month of Pro" --gift-plan pro:30 --gift-balance all:5`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(f.name) == "" {
@@ -741,8 +959,12 @@ func newCodeCreateCmd(env *Env) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if b == nil || b.Empty() {
-				return usageError(errors.New("a code has to grant something: give --discount, --bonus or --grant"))
+			gifts, err := f.gifts(env)
+			if err != nil {
+				return err
+			}
+			if nothingGranted(b.benefits, gifts) {
+				return usageError(errors.New("a code has to grant something: give --discount, --bonus, --grant, --gift-balance or --gift-plan"))
 			}
 			starts, ends, err := f.window(cmd, true, adminNow(env))
 			if err != nil {
@@ -753,7 +975,7 @@ func newCodeCreateCmd(env *Env) *cobra.Command {
 				return err
 			}
 			req := admin.CodeCreateRequest{
-				Name: strings.TrimSpace(f.name), Benefits: *b,
+				Name: strings.TrimSpace(f.name), Benefits: b.benefits, Grants: gifts,
 				Description: optional(cmd, "description", f.description),
 				StartsAt:    starts, EndsAt: ends, MaxRedemptions: maxRed, Duration: duration,
 			}
@@ -785,7 +1007,7 @@ func newCodeCreateCmd(env *Env) *cobra.Command {
 			})
 		},
 	}
-	f.register(cmd)
+	f.register(cmd, forCode)
 	cf.register(cmd)
 	cmd.Flags().BoolVar(&inactive, "inactive", false, "issue it disabled")
 	return cmd
@@ -802,12 +1024,18 @@ func newCodeEditCmd(env *Env) *cobra.Command {
 		Use:   "edit <code>",
 		Short: "Change a promo code",
 		Long: "Change a promo code. Only what is given is written; benefit flags replace the\n" +
-			"code's benefits as a whole. What was already redeemed stays as it was granted.\n\n" + benefitsHelp,
+			"code's benefits as a whole, and gift flags its gifts. What was already\n" +
+			"redeemed stays as it was granted.\n\n" + codeHelp,
 		Example: `  celadon admin codes edit SUMMER25 --max 200
-  celadon admin codes edit SUMMER25 --rename AUTUMN25 --ends 2026-11-30`,
+  celadon admin codes edit SUMMER25 --rename AUTUMN25 --ends 2026-11-30
+  celadon admin codes edit MONTHOFPRO --gift-plan pro:90`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			b, err := f.benefits(env)
+			if err != nil {
+				return err
+			}
+			gifts, err := f.gifts(env)
 			if err != nil {
 				return err
 			}
@@ -823,8 +1051,11 @@ func newCodeEditCmd(env *Env) *cobra.Command {
 				Code:        optional(cmd, "rename", strings.TrimSpace(rename)),
 				Name:        optional(cmd, "name", strings.TrimSpace(f.name)),
 				Description: optional(cmd, "description", f.description),
-				Benefits:    b, StartsAt: starts, EndsAt: ends,
+				Grants:      gifts, StartsAt: starts, EndsAt: ends,
 				MaxRedemptions: maxRed, Duration: duration,
+			}
+			if b.given() {
+				req.Benefits = &b.benefits
 			}
 			if cmd.Flags().Changed("active") {
 				req.Active = &active
@@ -852,7 +1083,7 @@ func newCodeEditCmd(env *Env) *cobra.Command {
 			})
 		},
 	}
-	f.register(cmd)
+	f.register(cmd, forCode)
 	cf.register(cmd)
 	cmd.Flags().StringVar(&rename, "rename", "", "a new code for it")
 	cmd.Flags().BoolVar(&active, "active", true, "accept it (true) or refuse it (false)")
@@ -956,13 +1187,17 @@ func newCodeRedemptionsCmd(env *Env) *cobra.Command {
 					expires := "with the code"
 					if r.ExpiresAt != 0 {
 						expires = output.Time(r.ExpiresAt.At())
-						if r.ExpiresAt.At().Before(now) {
+						if !r.Live(now) && r.RevokedAt == 0 {
 							expires += " (expired)"
 						}
 					}
-					rows = append(rows, []string{strconv.FormatInt(r.AccountID, 10), output.Time(r.CreatedAt), expires})
+					revoked := output.Dash
+					if r.RevokedAt != 0 {
+						revoked = output.Time(r.RevokedAt.At())
+					}
+					rows = append(rows, []string{strconv.FormatInt(r.AccountID, 10), output.Time(r.CreatedAt), expires, revoked})
 				}
-				p.Table([]string{"account", "redeemed", "expires"}, rows)
+				p.Table([]string{"account", "redeemed", "expires", "revoked"}, rows)
 				return nil
 			})
 		},

@@ -34,6 +34,8 @@ const (
 	cfStarts
 	cfEnds
 	cfBenefits
+	cfTrial
+	cfGifts
 )
 
 // campaignsTab lists campaigns and creates, edits, stops and deletes them.
@@ -220,6 +222,13 @@ func (t *campaignsTab) openForm(c *admin.Campaign) tea.Cmd {
 		title = fmt.Sprintf("Edit campaign #%d", c.ID)
 		v = *c
 	}
+	trialHint := "Events only: how long the trial lasts while it runs — 14, 30 or 90 days, or off for the usual length."
+	giftsHint := "Events only: a balance given once to every account that existed when it started — balance all:1, balance pro:2; pro:0 leaves Pro out. Empty or none gives nothing."
+	if v.Frozen() {
+		frozen := "Frozen: the event was announced " + output.Time(v.FirstAnnouncedAt.At()) + ", so this can no longer change. "
+		trialHint = frozen + trialHint
+		giftsHint = frozen + giftsHint
+	}
 	t.form = newForm(title,
 		formInput("Kind", v.Kind, "offer runs quietly; event announces itself to every account when it starts."),
 		formInput("Name", v.Name, "Up to 64 characters, shown to users."),
@@ -228,6 +237,8 @@ func (t *campaignsTab) openForm(c *admin.Campaign) tea.Cmd {
 		formInput("Starts", momentText(v.StartsAt, "now"), "now, 2026-10-01, 2026-10-01 18:00 (local time), or +2h. An event moved into the future announces itself again."),
 		formInput("Ends", momentText(v.EndsAt, "never"), "never, a date or a time, or a span from the start such as +7d."),
 		formInput("Benefits", query.FormatBenefits(v.Benefits), "discount pro:25, bonus 50:20, grant free:search:daily=200 — all/any for every plan or amount, unlimited for no ceiling. The Reference tab lists the names."),
+		formInput("Trial", query.FormatTrial(v.Benefits.TrialDays), trialHint),
+		formInput("Gifts", query.FormatGifts(v.Grants), giftsHint),
 	)
 	t.mode = promoForm
 	return t.form.start()
@@ -252,7 +263,16 @@ func (t *campaignsTab) submit() tea.Cmd {
 		f.err = err
 		return f.move(cfBenefits)
 	}
-	if benefits.Empty() {
+	if benefits.TrialDays, err = query.ParseTrial(f.value(cfTrial)); err != nil {
+		f.err = err
+		return f.move(cfTrial)
+	}
+	gifts, err := query.ParseGifts(f.value(cfGifts))
+	if err != nil {
+		f.err = err
+		return f.move(cfGifts)
+	}
+	if benefits.Empty() && gifts.Empty() {
 		f.err = errors.New("a campaign has to grant something")
 		return f.move(cfBenefits)
 	}
@@ -265,6 +285,9 @@ func (t *campaignsTab) submit() tea.Cmd {
 			return nil
 		}
 		req := admin.CampaignCreateRequest{Kind: kind, Name: name, Benefits: benefits, StartsAt: starts, EndsAt: ends}
+		if giftsWritten(gifts) {
+			req.Grants = &gifts
+		}
 		if description != "" {
 			req.Description = &description
 		}
@@ -300,6 +323,9 @@ func (t *campaignsTab) submit() tea.Cmd {
 	if !reflect.DeepEqual(benefits, was.Benefits) {
 		req.Benefits = &benefits
 	}
+	if !sameGifts(gifts, was.Grants) {
+		req.Grants = &gifts
+	}
 	req.StartsAt, req.EndsAt = starts, ends
 	if req == (admin.CampaignUpdateRequest{}) {
 		t.mode, t.form = promoBrowse, nil
@@ -329,6 +355,24 @@ func (t *campaignsTab) view(width, height int) string {
 	left := pane(fmt.Sprintf("Campaigns · %d · %s", len(t.list), filter), t.listBody(leftW-4, height-3), leftW, height, true)
 	right := pane("Campaign", t.cardBody(rightW-4, height-3), rightW, height, false)
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+}
+
+// announcedText says where a campaign's announcement stands. An event moved
+// into the future is announced again when it arrives, as a new generation.
+func announcedText(c admin.Campaign) string {
+	switch {
+	case c.AnnouncedAt != 0:
+		at := output.Time(c.AnnouncedAt.At())
+		if c.Generation > 1 {
+			at += fmt.Sprintf(" (announcement %d)", c.Generation)
+		}
+		return at
+	case c.FirstAnnouncedAt != 0:
+		return "not yet again — first " + output.Time(c.FirstAnnouncedAt.At())
+	case c.Kind == admin.KindEvent:
+		return "not yet"
+	}
+	return output.Dash
 }
 
 // stateStyle colors a promotion's state.
@@ -392,23 +436,21 @@ func (t *campaignsTab) cardBody(width, height int) string {
 	if !ok {
 		return ""
 	}
-	announced := output.Dash
-	if c.AnnouncedAt != 0 {
-		announced = output.Time(c.AnnouncedAt.At())
-	} else if c.Kind == admin.KindEvent {
-		announced = "not yet"
-	}
-	var b strings.Builder
-	b.WriteString(styleTitle.Render(output.Truncate(output.OneLine(c.Name), width)) + "\n")
-	b.WriteString(fields([]field{
+	rows := []field{
 		{"ID", strconv.FormatInt(c.ID, 10)},
 		{"Kind", c.Kind},
 		{"State", c.State},
 		{"Runs", windowText(c.StartsAt, c.EndsAt)},
-		{"Announced", announced},
-		{"Updated", output.Time(c.UpdatedAt)},
-	}, width))
-	b.WriteString("\n\n" + styleHeading.Render("Grants") + "\n" + benefitLines(c.Benefits, width))
+		{"Announced", announcedText(c)},
+	}
+	if c.Frozen() {
+		rows = append(rows, field{"Gifts", "frozen since the first announcement"})
+	}
+	rows = append(rows, field{"Updated", output.Time(c.UpdatedAt)})
+	var b strings.Builder
+	b.WriteString(styleTitle.Render(output.Truncate(output.OneLine(c.Name), width)) + "\n")
+	b.WriteString(fields(rows, width))
+	b.WriteString(givesLines(c.Benefits, c.Grants, width))
 	if c.Description != "" {
 		b.WriteString("\n\n" + styleHeading.Render("Description") + "\n" + wrapText(c.Description, width))
 	}

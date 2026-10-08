@@ -14,6 +14,7 @@ import (
 	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/output"
+	"github.com/x-chunk/celadon/internal/query"
 )
 
 type actionsMode int
@@ -80,7 +81,7 @@ func (t *actionsTab) keys() []keyHelp {
 	case actionsPlaceholders:
 		return []keyHelp{{"↑/↓", "move"}, {"esc", "back"}}
 	}
-	return []keyHelp{{"n", "new"}, {"e", "edit"}, {"d", "delete"}, {"p", "placeholders"}, {"r", "refresh"}}
+	return []keyHelp{{"n", "new"}, {"e", "edit"}, {"a", "args required"}, {"d", "delete"}, {"p", "placeholders"}, {"r", "refresh"}}
 }
 
 func (t *actionsTab) init() tea.Cmd { return t.load() }
@@ -197,6 +198,16 @@ func (t *actionsTab) key(msg tea.KeyMsg) tea.Cmd {
 		if a, ok := t.selected(); ok {
 			return t.openForm(&a)
 		}
+	case "a":
+		// Switching whether a shortcut needs its arguments is accepted on
+		// every plan, and is a write of its own.
+		if a, ok := t.selected(); ok && !t.saving {
+			t.saving = true
+			required := !a.ArgsRequired
+			return call(t.be, "action-save", 0, func(ctx context.Context, c *teal.Client) reply[teal.Action] {
+				return c.Actions.Update(ctx, a.ID, teal.ActionUpdateRequest{ArgsRequired: &required})
+			})
+		}
 	case "d", "delete":
 		if _, ok := t.selected(); ok {
 			t.mode = actionsConfirmDelete
@@ -270,6 +281,10 @@ func (t *actionsTab) save() tea.Cmd {
 	body := strings.TrimRight(t.body.Value(), "\n")
 	if name == "" || strings.TrimSpace(body) == "" {
 		t.formErr = fmt.Errorf("a shortcut needs a name and a body")
+		return nil
+	}
+	if err := query.CheckActionBody(body); err != nil {
+		t.formErr = err
 		return nil
 	}
 	t.saving = true
@@ -373,6 +388,20 @@ func (t *actionsTab) previewBody(width, height int) string {
 		return ""
 	}
 	meta := styleMuted.Render(fmt.Sprintf("#%d · used %d times · last %s", a.ID, a.Uses, output.Unix(a.UsedAt)))
+	var notes []string
+	if a.MinArgs > 0 {
+		args := fmt.Sprintf("reads %s after it; a call short of them fires, the missing ones empty", plural(int64(a.MinArgs), "word", "words"))
+		if a.ArgsRequired {
+			args = fmt.Sprintf("reads %s after it; a call short of them does not fire", plural(int64(a.MinArgs), "word", "words"))
+		}
+		notes = append(notes, args)
+	}
+	if a.MediaType != "" {
+		notes = append(notes, "sends a "+output.OneLine(a.MediaType)+" with it")
+	}
+	if len(notes) > 0 {
+		meta += "\n" + styleMuted.Render(wrapText(strings.Join(notes, " · "), width))
+	}
 	return clip(meta+"\n\n"+wrapText(a.Body, width), height)
 }
 
@@ -393,6 +422,12 @@ func (t *actionsTab) formView(width, height int) string {
 	var b strings.Builder
 	b.WriteString(styleLabel.Render("Name  ") + prefix + t.name.View() + "\n\n")
 	b.WriteString(styleLabel.Render("Body") + "\n" + t.body.View() + "\n")
+	length := query.ActionBodyLen(strings.TrimRight(t.body.Value(), "\n"))
+	counter := styleFaint.Render(fmt.Sprintf("%d/%d", length, query.MaxActionBody))
+	if length > query.MaxActionBody {
+		counter = styleError.Render(fmt.Sprintf("%d/%d — too long", length, query.MaxActionBody))
+	}
+	b.WriteString(counter + "\n")
 	switch {
 	case t.saving:
 		b.WriteString(styleMuted.Render("Saving…"))

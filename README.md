@@ -131,6 +131,7 @@ while, and celadon says for how long.
 ```sh
 celadon actions create hi --body 'Hi [[YOU_FIRST]]!'
 celadon actions edit 12                       # opens the body in $EDITOR
+celadon actions edit 12 --args-required       # fire only when every [[ARGn]] is given
 celadon actions placeholders                  # which placeholders the plan opens
 celadon settings retention --mode rotate --ttl 90d
 celadon settings vault --reveal-ttl 5m

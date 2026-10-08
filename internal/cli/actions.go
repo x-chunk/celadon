@@ -13,6 +13,7 @@ import (
 	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/output"
+	"github.com/x-chunk/celadon/internal/query"
 )
 
 // maxBody bounds a shortcut body read from a file; the API holds bodies to a
@@ -67,19 +68,22 @@ func newActionsListCmd(env *Env) *cobra.Command {
 				} else {
 					bodyWidth := 0
 					if w := env.IO.Width(); w > 0 {
-						bodyWidth = max(w-56, 20)
+						bodyWidth = max(w-68, 20)
 					}
 					rows := make([][]string, 0, len(list.Actions))
 					for _, a := range list.Actions {
 						body := output.OneLine(a.Body)
+						if a.MediaType != "" {
+							body = "[" + a.MediaType + "] " + body
+						}
 						if bodyWidth > 0 {
 							body = output.Truncate(body, bodyWidth)
 						}
 						rows = append(rows, []string{
-							strconv.FormatInt(a.ID, 10), list.Prefix + a.Name, strconv.FormatInt(a.Uses, 10), output.Unix(a.UsedAt), body,
+							strconv.FormatInt(a.ID, 10), list.Prefix + a.Name, strconv.FormatInt(a.Uses, 10), output.Unix(a.UsedAt), argsCell(a), body,
 						})
 					}
-					p.Table([]string{"id", "shortcut", "uses", "last used", "body"}, rows)
+					p.Table([]string{"id", "shortcut", "uses", "last used", "args", "body"}, rows)
 				}
 				p.Info("%s shortcuts", output.Quota(list.Quota))
 				p.Meta(meta)
@@ -122,16 +126,55 @@ func newActionsViewCmd(env *Env) *cobra.Command {
 
 func printAction(env *Env, a teal.Action) {
 	p := env.Printer()
-	p.Details([]output.KV{
+	pairs := []output.KV{
 		{Key: "ID", Value: strconv.FormatInt(a.ID, 10)},
 		{Key: "Name", Value: a.Name},
-		{Key: "Uses", Value: strconv.FormatInt(a.Uses, 10)},
-		{Key: "Last used", Value: output.Unix(a.UsedAt)},
-		{Key: "Created", Value: output.Time(a.CreatedAt)},
-		{Key: "Updated", Value: output.Time(a.UpdatedAt)},
-	})
+		{Key: "Arguments", Value: argsText(a)},
+	}
+	if a.MediaType != "" {
+		media := a.MediaType
+		if a.FileID != "" {
+			media += " · file " + a.FileID
+		}
+		pairs = append(pairs, output.KV{Key: "Attachment", Value: media})
+	}
+	p.Details(append(pairs,
+		output.KV{Key: "Length", Value: fmt.Sprintf("%d of %d", query.ActionBodyLen(a.Body), query.MaxActionBody)},
+		output.KV{Key: "Uses", Value: strconv.FormatInt(a.Uses, 10)},
+		output.KV{Key: "Last used", Value: output.Unix(a.UsedAt)},
+		output.KV{Key: "Created", Value: output.Time(a.CreatedAt)},
+		output.KV{Key: "Updated", Value: output.Time(a.UpdatedAt)},
+	))
 	p.Println()
 	p.Block(a.Body)
+}
+
+// argsText says how many words typed after a shortcut its body reads, and
+// what a call short of them does.
+func argsText(a teal.Action) string {
+	if a.MinArgs == 0 {
+		return "none"
+	}
+	words := "words"
+	if a.MinArgs == 1 {
+		words = "word"
+	}
+	short := "a call short of them fires, the missing ones empty"
+	if a.ArgsRequired {
+		short = "a call short of them does not fire"
+	}
+	return fmt.Sprintf("%d %s; %s", a.MinArgs, words, short)
+}
+
+// argsCell is argsText for a table: the count, and whether it is required.
+func argsCell(a teal.Action) string {
+	switch {
+	case a.MinArgs == 0:
+		return output.Dash
+	case a.ArgsRequired:
+		return strconv.Itoa(a.MinArgs) + ", required"
+	}
+	return strconv.Itoa(a.MinArgs)
 }
 
 // bodyFlags are where a shortcut's body can come from.
@@ -184,6 +227,9 @@ func (b *bodyFlags) read(env *Env, cmd *cobra.Command, initial string) (string, 
 	if strings.TrimSpace(body) == "" {
 		return "", usageError(errors.New("the body is empty"))
 	}
+	if err := query.CheckActionBody(body); err != nil {
+		return "", usageError(err)
+	}
 	return body, nil
 }
 
@@ -193,7 +239,8 @@ func newActionsCreateCmd(env *Env) *cobra.Command {
 		Use:   "create <name>",
 		Short: "Create a shortcut",
 		Long: `Create a shortcut. The body comes from --body, --body-file, or — with none of
-them, on a terminal — the editor in $VISUAL or $EDITOR.
+them, on a terminal — the editor in $VISUAL or $EDITOR. A body holds 900
+characters at most, an emoji counting as two, so that it always fits a caption.
 
 Under credits and hybrid billing a shortcut beyond the plan's ceiling is
 charged once, when it is created.`,
@@ -241,16 +288,25 @@ charged once, when it is created.`,
 
 func newActionsEditCmd(env *Env) *cobra.Command {
 	var (
-		b    bodyFlags
-		name string
+		b            bodyFlags
+		name         string
+		argsRequired bool
 	)
 	cmd := &cobra.Command{
 		Use:   "edit <id>",
-		Short: "Rename a shortcut or change what it says",
-		Long: `Rename a shortcut, change its body, or both. Only what is given is written;
-with nothing given, on a terminal, the current body opens in the editor.`,
+		Short: "Rename a shortcut, change what it says or whether it needs its arguments",
+		Long: `Rename a shortcut, change its body, switch whether it needs its arguments, or
+any of them at once. Only what is given is written, and all of it in one write:
+a change refused on one field — a name taken, a body refused — changes none of
+them. With nothing given, on a terminal, the current body opens in the editor.
+
+A body reads the words typed after the shortcut through [[ARG1]] … [[ARG9]] and
+[[ARGS]]. --args-required decides what a call with fewer words does: off, the
+missing ones render as empty; on, nothing fires and the message is sent exactly
+as typed. Switching it alone is accepted on every plan.`,
 		Example: `  celadon actions edit 12 --name hello
   celadon actions edit 12 --body-file greeting.txt
+  celadon actions edit 12 --args-required
   celadon actions edit 12`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -262,9 +318,10 @@ with nothing given, on a terminal, the current body opens in the editor.`,
 				return err
 			}
 			renaming := cmd.Flags().Changed("name")
-			if !renaming && !b.given(cmd) {
+			switching := cmd.Flags().Changed("args-required")
+			if !renaming && !switching && !b.given(cmd) {
 				if !env.IO.CanPrompt() {
-					return usageError(errors.New("nothing to change: pass --name, --body or --body-file"))
+					return usageError(errors.New("nothing to change: pass --name, --body, --body-file or --args-required"))
 				}
 				b.editor = true
 			}
@@ -300,7 +357,10 @@ with nothing given, on a terminal, the current body opens in the editor.`,
 					req.Body = &body
 				}
 			}
-			if req.Name == nil && req.Body == nil {
+			if switching {
+				req.ArgsRequired = &argsRequired
+			}
+			if req.Name == nil && req.Body == nil && req.ArgsRequired == nil {
 				env.Printer().Info("Nothing changed.")
 				return nil
 			}
@@ -319,6 +379,7 @@ with nothing given, on a terminal, the current body opens in the editor.`,
 	}
 	b.register(cmd)
 	cmd.Flags().StringVarP(&name, "name", "n", "", "the new name")
+	cmd.Flags().BoolVar(&argsRequired, "args-required", false, "fire only when called with every argument the body reads (=false to fire anyway)")
 	return cmd
 }
 

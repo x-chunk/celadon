@@ -69,10 +69,13 @@ its 20 most recent), is run again at the page asked for, and billed.
 
 ## Actions
 
-`n` new, `e` or `enter` edit, `d` delete (then `y`), `p` the placeholders and
-the plan each needs, `r` refresh. In the form, `tab` moves between the name
-and the body, `ctrl+s` saves and `esc` cancels. An edit sends only what
-changed.
+`n` new, `e` or `enter` edit, `a` switch whether the shortcut fires when it is
+called with fewer words than its body reads, `d` delete (then `y`), `p` the
+placeholders and the plan each needs, `r` refresh. The body pane says how many
+words a shortcut reads and what it sends with its text. In the form, `tab`
+moves between the name and the body, `ctrl+s` saves and `esc` cancels; a
+counter shows the body against its limit of 900 characters, an emoji counting
+as two. An edit sends only what changed.
 
 ## Vault
 

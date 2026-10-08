@@ -66,6 +66,35 @@ func TestActionsCreateEditDelete(t *testing.T) {
 	}
 }
 
+func TestActionsArgumentsAndTheBodyLimit(t *testing.T) {
+	d := newDriver(t)
+	action := map[string]any{"id": 12, "name": "order", "body": "Order [[ARG1]]", "min_args": 1, "media_type": "photo", "uses": 3}
+	d.api.ok("GET", "/v1/actions", map[string]any{"prefix": ".", "actions": []any{action}, "quota": map[string]any{"limit": 25, "used": 1}})
+	d.api.ok("PATCH", "/v1/actions/12", action)
+	d.api.ok("POST", "/v1/actions", action)
+
+	d.open("Actions")
+	d.wantView("reads 1 word after it", "a call short of them fires", "sends a photo with it")
+
+	d.keys("a")
+	if b := d.body("PATCH", "/v1/actions/12"); b["args_required"] != true || len(b) != 1 {
+		t.Errorf("switch body = %v", b)
+	}
+
+	d.keys("n")
+	d.keys("long")
+	d.key(tea.KeyTab)
+	d.keys("Hi")
+	d.wantView("2/900")
+	d.keys(strings.Repeat("a", 899))
+	d.wantView("901/900 — too long")
+	d.key(tea.KeyCtrlS)
+	if len(d.api.called("POST", "/v1/actions")) != 0 {
+		t.Error("a body over the limit was sent")
+	}
+	d.wantView("901 characters long")
+}
+
 func TestErrorsReachTheStatusLine(t *testing.T) {
 	d := newDriver(t)
 	d.api.on("GET", "/v1/actions", func(w http.ResponseWriter, _ *http.Request) {

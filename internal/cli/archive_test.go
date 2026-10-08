@@ -142,19 +142,48 @@ func TestExportWritesAWholeDocument(t *testing.T) {
 	}
 }
 
-func TestExportSaysWhenTheStreamWasCut(t *testing.T) {
+func TestExportKeepsNothingOfADocumentCutShort(t *testing.T) {
 	h := newHarness(t).loggedIn()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "out.json")
+	nothingKept := func() {
+		t.Helper()
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) != 0 {
+			t.Errorf("left behind: %v, %v", entries, err)
+		}
+	}
+
+	// The API breaks the connection of an export it fails part way through.
+	h.api.on("POST", "/v1/messages/export", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		io.WriteString(w, `{"total":2,"messages":[{"id":1},`)
+	})
+	r := h.run("", "export", "-f", file).wantCode(t, ExitError)
+	if !strings.Contains(r.stderr, "cut off") || !strings.Contains(r.stderr, "refunded") {
+		t.Errorf("stderr = %q", r.stderr)
+	}
+	nothingKept()
+
+	// A stream that ends cleanly before its document does is no more use.
 	h.api.on("POST", "/v1/messages/export", func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, `{"total":2,"messages":[{"id":1},`)
 	})
-	file := filepath.Join(t.TempDir(), "out.json")
-	r := h.run("", "export", "-f", file).wantCode(t, ExitError)
-	if !strings.Contains(r.stderr, "50 MB cap") {
+	r = h.run("", "export", "-f", file).wantCode(t, ExitError)
+	if !strings.Contains(r.stderr, "before its document did") {
 		t.Errorf("stderr = %q", r.stderr)
 	}
-	if _, err := os.Stat(file); err != nil {
-		t.Error("the part that did arrive was thrown away")
+	nothingKept()
+
+	// One that would pass the cap is refused before a byte is sent.
+	h.api.on("POST", "/v1/messages/export", func(w http.ResponseWriter, _ *http.Request) {
+		refuse(w, http.StatusRequestEntityTooLarge, "too_large", "the export would pass 50 MB")
+	})
+	r = h.run("", "export", "-f", file).wantCode(t, ExitError)
+	if !strings.Contains(r.stderr, "capped at 50 MB") || !strings.Contains(r.stderr, "nothing was sent or charged") {
+		t.Errorf("stderr = %q", r.stderr)
 	}
+	nothingKept()
 }
 
 func TestChatsAndMessages(t *testing.T) {

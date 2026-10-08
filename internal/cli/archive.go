@@ -195,9 +195,11 @@ terminal, and otherwise to aether-export-<time>.json in the current directory.
 A file is written beside its destination and moved into place when complete,
 so an interrupted export never leaves half a file under the name asked for.
 
-The whole export is priced and charged before the first byte arrives. An
-export is capped at 50 MB; one that reaches the cap ends early and its charge
-is refunded, and celadon says so.`,
+The whole export is priced and charged before the first byte arrives: the
+export, and every message in it. An export is capped at 50 MB, and one that
+would pass the cap is refused whole before a byte is sent, with nothing
+charged. One the server fails part way through is refunded and cut off, and
+celadon keeps no part of it.`,
 		Example: `  celadon export --chat -1001234567890 -f ann.json
   celadon export --where created~2026-09 > september.json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -233,25 +235,19 @@ is refunded, and celadon says so.`,
 			total := meta.Header.Get("X-Aether-Export-Total")
 			p := env.Printer()
 			if toStdout {
-				if _, err := io.Copy(env.IO.Out, body); err != nil {
-					return fmt.Errorf("streaming the export: %w", err)
+				if n, err := io.Copy(env.IO.Out, body); err != nil {
+					return fmt.Errorf("the export was cut off after %s, and what reached standard output is not a whole document (an export the server fails part way through is refunded): %w", humanBytes(n), err)
 				}
 				p.Meta(meta)
 				return nil
 			}
 
-			n, complete, err := writeExport(file, body)
+			n, err := writeExport(file, body)
 			if err != nil {
 				return err
 			}
-			if !complete {
-				p.Warn("the export reached the server's 50 MB cap and ended early; its charge is refunded. Narrow the query and export the rest separately.")
-			}
 			p.Success("Exported %s messages to %s (%s)", output.Or(total), file, humanBytes(n))
 			p.Meta(meta)
-			if !complete {
-				return silentError{code: ExitError}
-			}
 			return nil
 		},
 	}
@@ -262,15 +258,18 @@ is refunded, and celadon says so.`,
 }
 
 // writeExport streams body into a temporary file beside path and moves it
-// into place. The temporary file is created 0600, and the archive it holds
-// stays readable by its owner alone. It reports whether the document is whole: a stream cut at the
-// server's cap is not valid JSON, and is still kept, because what did arrive
-// was paid for and may be what somebody needs.
-func writeExport(path string, body io.Reader) (n int64, complete bool, err error) {
+// into place once the document is whole. The temporary file is created 0600,
+// so the archive it holds stays readable by its owner alone.
+//
+// A document cut off on the way is removed rather than kept: the API breaks
+// the connection of an export it fails part way through and refunds it, and
+// a stream that ends before its document does is no more use. Under the name
+// asked for there is a whole document or nothing.
+func writeExport(path string, body io.Reader) (n int64, err error) {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.part")
 	if err != nil {
-		return 0, false, fmt.Errorf("creating the export file: %w", err)
+		return 0, fmt.Errorf("creating the export file: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -279,22 +278,24 @@ func writeExport(path string, body io.Reader) (n int64, complete bool, err error
 		}
 	}()
 	if n, err = io.Copy(tmp, body); err != nil {
-		return n, false, fmt.Errorf("streaming the export: %w", err)
+		return n, fmt.Errorf("the export was cut off after %s and nothing of it was kept (an export the server fails part way through is refunded): %w", humanBytes(n), err)
 	}
 	if err = tmp.Sync(); err != nil {
-		return n, false, fmt.Errorf("writing the export: %w", err)
+		return n, fmt.Errorf("writing the export: %w", err)
 	}
 	if _, err = tmp.Seek(0, io.SeekStart); err != nil {
-		return n, false, fmt.Errorf("checking the export: %w", err)
+		return n, fmt.Errorf("checking the export: %w", err)
 	}
-	complete = validJSON(tmp)
+	if !validJSON(tmp) {
+		return n, fmt.Errorf("the export ended after %s before its document did, and nothing of it was kept; run it again", humanBytes(n))
+	}
 	if err = tmp.Close(); err != nil {
-		return n, false, fmt.Errorf("writing the export: %w", err)
+		return n, fmt.Errorf("writing the export: %w", err)
 	}
 	if err = os.Rename(tmp.Name(), path); err != nil {
-		return n, false, fmt.Errorf("moving the export into place: %w", err)
+		return n, fmt.Errorf("moving the export into place: %w", err)
 	}
-	return n, complete, nil
+	return n, nil
 }
 
 // validJSON reports whether r holds exactly one JSON value, reading it token

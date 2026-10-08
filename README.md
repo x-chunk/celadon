@@ -98,8 +98,10 @@ after it ran (the application keeps its 20 most recent).
 
 `export` writes every match as one JSON document — to `--file`, to standard
 output when it is a pipe, or to `aether-export-<time>.json`. The file is
-written beside its destination and moved into place when complete; one cut
-short at the server's 50 MB cap is kept and reported.
+written beside its destination and moved into place when complete. An export
+that would pass the server's 50 MB cap is refused before anything is sent or
+charged; one the server fails part way through is cut off and refunded, and
+nothing of it is kept.
 
 ### The vault
 

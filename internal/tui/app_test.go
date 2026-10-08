@@ -10,7 +10,7 @@ import (
 
 func TestOverviewLoadsOnStart(t *testing.T) {
 	d := newDriver(t)
-	d.wantView("Reports", "balance $4.20", "search:daily", "35 / 50", "Ultra", "1 Overview", "work")
+	d.wantView("Reports", "balance $4.20", "search:daily", "35 / 50", "Ultra", "1 Overview", "work", "does not lapse", "never")
 }
 
 func TestQuit(t *testing.T) {

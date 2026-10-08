@@ -160,21 +160,27 @@ func (t *overviewTab) appSection(width int) string {
 		{"Funded", output.Money(a.Funded)},
 		{"Spent", output.Money(a.Spent)},
 		{"Requests", fmt.Sprint(a.Requests)},
-		{"Last used", output.Time(a.LastUsedAt)},
+		{"Last used", orWord(output.Time(a.LastUsedAt), a.LastUsedAt.IsZero(), "never")},
 		{"Key", a.KeyPrefix + "…"},
 	}, width) + "\n" + styleLabel.Render("State") + "      " + state
 }
 
 func (t *overviewTab) planSection(width int) string {
 	a := t.account
-	return styleHeading.Render("Plan") + "\n" + fields([]field{
+	rows := []field{
 		{"Plan", fmt.Sprintf("%s (%s)", output.Or(a.Plan.Name), a.Plan.Tier)},
 		{"Price", output.Cents(a.Plan.PriceCents)},
-		{"Paid until", output.Time(a.Plan.Until)},
+		{"Paid until", orWord(output.Time(a.Plan.Until), a.Plan.Until.IsZero(), "does not lapse")},
 		{"Account", fmt.Sprint(a.AccountID)},
 		{"Balance", output.Cents(a.BalanceCents) + " (not spendable with a key)"},
 		{"Permissions", fmt.Sprint(len(a.Plan.Permissions))},
-	}, width)
+	}
+	if a.MeasuredAt != 0 {
+		// The API measures an account, its quotas included, at most once
+		// every ten seconds: a refresh sooner shows the same numbers.
+		rows = append(rows, field{"Measured", a.MeasuredAt.At().Local().Format("15:04:05")})
+	}
+	return styleHeading.Render("Plan") + "\n" + fields(rows, width)
 }
 
 func (t *overviewTab) quotaSection(width int) string {
@@ -228,6 +234,14 @@ func (t *overviewTab) usageSection(width int) string {
 		b.WriteString(styleLabel.Render(label) + styleTitle.Render(output.Sparkline(daily, max(min(len(daily), width-len(label)), 1), 0)) + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// orWord is s, or word when zero says there is nothing for s to show.
+func orWord(s string, zero bool, word string) string {
+	if zero {
+		return word
+	}
+	return s
 }
 
 // dailySpend adds a window's day-by-day rows — one for each operation on

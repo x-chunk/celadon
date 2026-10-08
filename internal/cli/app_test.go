@@ -87,3 +87,23 @@ func TestAppPricesListsEveryRateCeiling(t *testing.T) {
 		t.Errorf("a ceiling that is off was listed:\n%s", r.stdout)
 	}
 }
+
+func TestAccountViewSaysWhenItWasMeasuredAndThatThePlanDoesNotLapse(t *testing.T) {
+	h := newHarness(t).loggedIn()
+	h.api.ok("GET", "/v1/account", map[string]any{
+		"account_id": 42, "plan": map[string]any{"tier": "max", "name": "Max", "permissions": []string{"search", "vault"}},
+		"measured_at": 1790000000,
+		"quotas":      []any{map[string]any{"key": "search:daily", "unlimited": true, "used": 12, "limit": nil, "remaining": nil}},
+	})
+	r := h.run("", "account", "view").wantCode(t, ExitOK)
+	for _, want := range []string{"does not lapse", "Measured", "(at most every 10 seconds)", "12 used · unlimited"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, r.stdout)
+		}
+	}
+	h.api.ok("GET", "/v1/app", sampleApp)
+	r = h.run("", "app", "view").wantCode(t, ExitOK)
+	if !strings.Contains(r.stdout, "Last used:") || !strings.Contains(r.stdout, "never") {
+		t.Errorf("a key never used reads:\n%s", r.stdout)
+	}
+}

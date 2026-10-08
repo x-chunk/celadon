@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"go.xchunk.org/teal"
@@ -56,7 +57,7 @@ func newAppViewCmd(env *Env) *cobra.Command {
 					{Key: "Funded", Value: output.Money(app.Funded)},
 					{Key: "Spent", Value: output.Money(app.Spent)},
 					{Key: "Requests", Value: fmt.Sprint(app.Requests)},
-					{Key: "Last used", Value: output.Time(app.LastUsedAt)},
+					{Key: "Last used", Value: lastUsed(app.LastUsedAt)},
 					{Key: "Key", Value: app.KeyPrefix + "… issued " + output.Time(app.KeyIssuedAt)},
 					{Key: "Created", Value: output.Time(app.CreatedAt)},
 					{Key: "State", Value: state},
@@ -66,6 +67,22 @@ func newAppViewCmd(env *Env) *cobra.Command {
 			})
 		},
 	}
+}
+
+// lastUsed is when a key was last used, or that it never was.
+func lastUsed(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return output.Time(t)
+}
+
+// paidUntil is when a plan lapses, or that it does not.
+func paidUntil(t time.Time) string {
+	if t.IsZero() {
+		return "does not lapse"
+	}
+	return output.Time(t)
 }
 
 // billingLabel says what a billing mode means, not only what it is called.
@@ -243,13 +260,19 @@ func newAccountViewCmd(env *Env) *cobra.Command {
 			a, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(a, func() error {
-				p.Details([]output.KV{
+				pairs := []output.KV{
 					{Key: "Account", Value: fmt.Sprint(a.AccountID)},
 					{Key: "Plan", Value: fmt.Sprintf("%s (%s, %s)", output.Or(a.Plan.Name), a.Plan.Tier, output.Cents(a.Plan.PriceCents))},
-					{Key: "Paid until", Value: output.Time(a.Plan.Until)},
+					{Key: "Paid until", Value: paidUntil(a.Plan.Until)},
 					{Key: "Balance", Value: output.Cents(a.BalanceCents) + " (the account's own; not spendable with a key)"},
 					{Key: "Permissions", Value: output.Or(strings.Join(a.Plan.Permissions, ", "))},
-				})
+				}
+				if a.MeasuredAt != 0 {
+					// The API measures an account at most once every ten
+					// seconds: asking sooner reads the same numbers back.
+					pairs = append(pairs, output.KV{Key: "Measured", Value: a.MeasuredAt.At().Local().Format("2006-01-02 15:04:05") + " (at most every 10 seconds)"})
+				}
+				p.Details(pairs)
 				if len(a.Quotas) > 0 {
 					p.Println()
 					printQuotas(env, a.Quotas)

@@ -12,7 +12,7 @@ import (
 
 func TestVaultStoreReadsEverythingFromStdin(t *testing.T) {
 	h := newHarness(t).loggedIn()
-	h.api.ok("POST", "/v1/vault/entries", map[string]any{"recovery_codes": []string{"AAAA-1111", "BBBB-2222"}})
+	h.api.ok("POST", "/v1/vault/entries", map[string]any{"entry_id": 12, "recovery_codes": []string{"AAAA-1111", "BBBB-2222"}})
 
 	r := h.run("correct horse\nthe secret\nsecond line", "vault", "store", "--passphrase-stdin").wantCode(t, ExitOK)
 	body := decodeBody(t, h.api.last().Body)
@@ -22,7 +22,7 @@ func TestVaultStoreReadsEverythingFromStdin(t *testing.T) {
 	if r.stdout != "AAAA-1111\nBBBB-2222\n" {
 		t.Errorf("stdout = %q", r.stdout)
 	}
-	if !strings.Contains(r.stderr, "will not be shown again") {
+	if !strings.Contains(r.stderr, "will not be shown again") || !strings.Contains(r.stderr, "entry #12") || !strings.Contains(r.stderr, "delete --id 12") {
 		t.Errorf("stderr = %q", r.stderr)
 	}
 }
@@ -83,12 +83,25 @@ func TestVaultRenameRecoverAndDelete(t *testing.T) {
 	}
 	h.run("same\nsame\n", "vault", "rename", "--passphrase-stdin").wantCode(t, ExitUsage)
 
-	r := h.run(" CODE-1 \nfresh\n", "vault", "recover", "--code-stdin", "--rekey").wantCode(t, ExitOK)
+	r := h.run(" CODE-1 \nfresh\n", "vault", "recover", "--code-stdin").wantCode(t, ExitOK)
 	if b := decodeBody(t, h.api.last().Body); b["code"] != "CODE-1" || b["new_passphrase"] != "fresh" {
 		t.Errorf("recover body = %v", b)
 	}
 	if !strings.Contains(r.stdout, "N1") || !strings.Contains(r.stderr, "3 old codes were revoked") {
 		t.Errorf("recover stdout = %q, stderr = %q", r.stdout, r.stderr)
+	}
+	// --rekey is what moving the entry used to take; scripts that pass it
+	// keep working.
+	h.run("CODE-2\nfresher\n", "vault", "recover", "--code-stdin", "--rekey").wantCode(t, ExitOK)
+	if b := decodeBody(t, h.api.last().Body); b["code"] != "CODE-2" || b["new_passphrase"] != "fresher" {
+		t.Errorf("recover --rekey body = %v", b)
+	}
+	// The new passphrase is required, so a code alone is refused before the
+	// code is spent.
+	calls := h.api.calls()
+	r = h.run("CODE-3\n", "vault", "recover", "--code-stdin").wantCode(t, ExitUsage)
+	if h.api.calls() != calls || !strings.Contains(r.stderr, "ended before the new passphrase") {
+		t.Errorf("a code without a new passphrase: %d calls, stderr = %q", h.api.calls()-calls, r.stderr)
 	}
 
 	h.run("pass\n", "vault", "delete", "--passphrase-stdin").wantCode(t, ExitUsage)

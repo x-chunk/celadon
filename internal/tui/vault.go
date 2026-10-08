@@ -49,11 +49,11 @@ var vaultOps = []vaultOp{
 		inputs: []vaultInput{{"Current passphrase", true, -1}, {"New passphrase", true, -1}, {"Repeat new passphrase", true, 1}}},
 	opCodes: {name: "New codes", desc: "Replace every recovery code with a fresh set. The old ones stop working at once.",
 		inputs: []vaultInput{{"Passphrase", true, -1}}},
-	opRecover: {name: "Recover", desc: "Open an entry with a one-time recovery code. The code is spent, the others are replaced, and the owner is alerted in Telegram. Leave the new passphrase empty to keep the current one.",
-		inputs: []vaultInput{{"Recovery code", true, -1}, {"New passphrase (optional)", true, -1}}},
+	opRecover: {name: "Recover", desc: "Open an entry with a one-time recovery code and move it to a new passphrase. The code is spent, the others are replaced, and the owner is alerted in Telegram.",
+		inputs: []vaultInput{{"Recovery code", true, -1}, {"New passphrase", true, -1}, {"Repeat new passphrase", true, 1}}},
 	opDelete: {name: "Delete", desc: "Destroy the entry a passphrase opens. It cannot be recovered.", danger: true,
 		inputs: []vaultInput{{"Passphrase", true, -1}}},
-	opDeleteID: {name: "Delete by id", desc: "Destroy an entry by the id it was stored under. It cannot be recovered.", danger: true,
+	opDeleteID: {name: "Delete by id", desc: "Destroy an entry by the id Store showed when it was written. It cannot be recovered.", danger: true,
 		inputs: []vaultInput{{"Entry id", false, -1}}},
 }
 
@@ -146,6 +146,9 @@ func (t *vaultTab) update(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 			title := "Stored"
+			if msg.val.EntryID != 0 {
+				title = fmt.Sprintf("Stored as entry #%d — Delete by id destroys it without the passphrase", msg.val.EntryID)
+			}
 			if msg.op == "vault-codes" {
 				title = "New recovery codes issued; the old ones no longer work"
 			}
@@ -267,7 +270,7 @@ func (t *vaultTab) submit() tea.Cmd {
 	op := vaultOps[t.menu.pos]
 	for i, in := range op.inputs {
 		v := t.inputs[i].Value()
-		if v == "" && !strings.Contains(in.label, "optional") {
+		if v == "" {
 			t.err = fmt.Errorf("%s is empty", strings.ToLower(in.label))
 			return t.focusInput(i)
 		}

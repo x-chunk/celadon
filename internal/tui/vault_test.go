@@ -34,7 +34,7 @@ func TestVaultRevealIsForgottenOnLeave(t *testing.T) {
 
 func TestVaultStoreChecksTheRepeatAndShowsCodes(t *testing.T) {
 	d := newDriver(t)
-	d.api.ok("POST", "/v1/vault/entries", map[string]any{"recovery_codes": []string{"AAAA-1111", "BBBB-2222"}})
+	d.api.ok("POST", "/v1/vault/entries", map[string]any{"entry_id": 12, "recovery_codes": []string{"AAAA-1111", "BBBB-2222"}})
 	d.open("Vault")
 	d.key(tea.KeyEnter)
 	d.keys("one")
@@ -54,7 +54,33 @@ func TestVaultStoreChecksTheRepeatAndShowsCodes(t *testing.T) {
 	if b := d.body("POST", "/v1/vault/entries"); b["passphrase"] != "one" || b["plaintext"] != "secret" {
 		t.Errorf("store body = %v", b)
 	}
-	d.wantView("AAAA-1111", "will not be shown again")
+	d.wantView("AAAA-1111", "will not be shown again", "Stored as entry #12")
+}
+
+func TestVaultRecoverMovesTheEntryToANewPassphrase(t *testing.T) {
+	d := newDriver(t)
+	d.api.ok("POST", "/v1/vault/entries/recover", map[string]any{"plaintext": "s3cret", "rekeyed": true, "recovery_codes": []string{"N1"}, "revoked": 4})
+	d.open("Vault")
+	for range opRecover {
+		d.key(tea.KeyDown)
+	}
+	d.key(tea.KeyEnter)
+	d.keys("CODE-1")
+	d.key(tea.KeyEnter)
+	d.key(tea.KeyEnter)
+	d.key(tea.KeyEnter) // submitted from the last field, with no new passphrase
+	if len(d.api.called("POST", "/v1/vault/entries/recover")) != 0 {
+		t.Fatal("a code without a new passphrase was spent")
+	}
+	d.wantView("new passphrase is empty")
+	d.keys("fresh")
+	d.key(tea.KeyEnter)
+	d.keys("fresh")
+	d.key(tea.KeyEnter)
+	if b := d.body("POST", "/v1/vault/entries/recover"); b["code"] != "CODE-1" || b["new_passphrase"] != "fresh" {
+		t.Errorf("recover body = %v", b)
+	}
+	d.wantView("the entry now opens with the new passphrase", "s3cret", "N1", "4 old codes were revoked")
 }
 
 func TestVaultDeleteAsksFirst(t *testing.T) {

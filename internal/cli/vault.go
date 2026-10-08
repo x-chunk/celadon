@@ -59,6 +59,9 @@ func (s secretInput) read(label string, confirmIt bool) (string, error) {
 	var v string
 	if s.stdin {
 		line, err := s.env.IO.ReadLine()
+		if errors.Is(err, io.EOF) {
+			return "", usageError(fmt.Errorf("standard input ended before the %s", strings.ToLower(label)))
+		}
 		if err != nil {
 			return "", fmt.Errorf("reading the %s from standard input: %w", strings.ToLower(label), err)
 		}
@@ -131,7 +134,11 @@ left of standard input after the passphrase line, or from a hidden prompt.`,
 			codes, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(codes, func() error {
-				p.Success("Stored the secret")
+				if codes.EntryID != 0 {
+					p.Success("Stored the secret as entry #%d; `celadon vault delete --id %d` destroys it without the passphrase", codes.EntryID, codes.EntryID)
+				} else {
+					p.Success("Stored the secret")
+				}
 				printCodes(env, codes.RecoveryCodes)
 				p.Meta(meta)
 				return nil
@@ -344,13 +351,15 @@ func newVaultRecoverCmd(env *Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recover",
 		Short: "Open an entry with a one-time recovery code",
-		Long: `Open an entry with one of its recovery codes and print the secret, and — with
---rekey — move it to a new passphrase on the way.
+		Long: `Open an entry with one of its recovery codes, print the secret, and move the
+entry to a new passphrase. The API asks for the new passphrase up front: the
+fresh codes exist only in its answer, and an entry that still opens with a
+passphrase of your own is not lost with them if the answer never arrives.
 
 The code is spent whatever happens next, every remaining code is replaced with
 the fresh set printed here, and the account's owner is alerted in Telegram.
-With --code-stdin, the first line of standard input is the code and, with
---rekey, the second is the new passphrase.`,
+With --code-stdin, the first line of standard input is the code and the second
+the new passphrase.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in := secretInput{env: env, stdin: codeStdin}
@@ -358,12 +367,11 @@ With --code-stdin, the first line of standard input is the code and, with
 			if err != nil {
 				return err
 			}
-			req := teal.VaultRecoverRequest{Code: strings.TrimSpace(code)}
-			if rekey {
-				if req.NewPassphrase, err = in.read("New passphrase", true); err != nil {
-					return err
-				}
+			next, err := in.read("New passphrase", true)
+			if err != nil {
+				return err
 			}
+			req := teal.VaultRecoverRequest{Code: strings.TrimSpace(code), NewPassphrase: next}
 			c, _, err := env.Client()
 			if err != nil {
 				return err
@@ -396,8 +404,11 @@ With --code-stdin, the first line of standard input is the code and, with
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&codeStdin, "code-stdin", false, "read the code (and a new passphrase) from standard input")
-	cmd.Flags().BoolVar(&rekey, "rekey", false, "move the entry to a new passphrase")
+	cmd.Flags().BoolVar(&codeStdin, "code-stdin", false, "read the code and then the new passphrase from standard input, one per line")
+	// Moving the entry is no longer a choice; the flag stays so that the
+	// scripts that pass it keep working.
+	cmd.Flags().BoolVar(&rekey, "rekey", true, "move the entry to a new passphrase")
+	_ = cmd.Flags().MarkDeprecated("rekey", "a recovered entry always moves to a new passphrase now")
 	return cmd
 }
 
@@ -410,9 +421,10 @@ func newVaultDeleteCmd(env *Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Destroy an entry",
-		Long: `Destroy the entry a passphrase addresses, or the one with --id. The row is
-destroyed rather than marked, which frees the passphrase to be used again.
-Deleting is free on every billing mode.`,
+		Long: `Destroy the entry a passphrase addresses, or the one with --id — the id store
+printed when it was written, which addresses the entry and opens nothing. The
+row is destroyed rather than marked, which frees the passphrase to be used
+again. Deleting is free on every billing mode.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var (
@@ -458,7 +470,7 @@ Deleting is free on every billing mode.`,
 		},
 	}
 	cmd.Flags().BoolVar(&passStdin, "passphrase-stdin", false, "read the passphrase from the first line of standard input")
-	cmd.Flags().StringVar(&id, "id", "", "destroy the entry with this id instead")
+	cmd.Flags().StringVar(&id, "id", "", "destroy the entry with this id, as store printed it, instead")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	return cmd
 }

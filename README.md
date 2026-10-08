@@ -109,14 +109,22 @@ nothing of it is kept.
 celadon vault store                          # passphrase twice, then the secret
 celadon vault store --secret-file id_ed25519
 celadon vault reveal > id_ed25519            # byte for byte into a file
-celadon vault recover --rekey                # a recovery code, then a new passphrase
+celadon vault recover                        # a recovery code, then the new passphrase
+celadon vault delete --id 12                 # by the entry id store printed
 printf '%s\n' "$PASS" | celadon vault reveal --passphrase-stdin
 ```
 
 Passphrases and codes come from a hidden prompt or from standard input
 (`--passphrase-stdin`, `--code-stdin`), never from arguments. Recovery codes go
 to standard output and the warning that they will not be shown again to
-standard error, so a pipe captures the codes alone.
+standard error, so a pipe captures the codes alone. A recovered entry always
+moves to a new passphrase.
+
+Revealing needs nothing more than the key. Everything that writes to the vault
+does only once the key's owner has opened `vault:write` to the key, on the
+application's screen in the bot; until then it is refused and nothing is
+charged. Too many wrong passphrases and codes shut the vault to guesses for a
+while, and celadon says for how long.
 
 ### Shortcuts and settings
 

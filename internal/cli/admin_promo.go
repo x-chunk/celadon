@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -1064,7 +1065,7 @@ func newCodeEditCmd(env *Env) *cobra.Command {
 				return usageError(errors.New("nothing to change: give at least one flag"))
 			}
 			if f.dryRun {
-				return dryRun(env, "PATCH", "/admin/promo/codes/"+args[0], req)
+				return dryRun(env, "PATCH", "/admin/promo/codes/"+url.PathEscape(args[0]), req)
 			}
 			c, _, err := env.AdminClient()
 			if err != nil {

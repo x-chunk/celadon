@@ -327,6 +327,37 @@ func TestCodeCallsEscapeTheCode(t *testing.T) {
 	}
 }
 
+func TestDotsAreNotCodes(t *testing.T) {
+	var calls atomic.Int32
+	srv := server(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		ok(w, map[string]any{})
+	})
+	c := client(t, srv.URL)
+	ctx := context.Background()
+	for _, code := range []string{"..", ".", ""} {
+		if _, _, err := c.Promo.Code(ctx, code); err == nil {
+			t.Errorf("Code(%q) was sent", code)
+		}
+		if _, _, err := c.Promo.UpdateCode(ctx, code, CodeUpdateRequest{Active: Ptr(false)}); err == nil {
+			t.Errorf("UpdateCode(%q) was sent", code)
+		}
+		if _, err := c.Promo.DeleteCode(ctx, code); err == nil {
+			t.Errorf("DeleteCode(%q) was sent", code)
+		}
+		if _, _, err := c.Promo.Redemptions(ctx, code, nil); err == nil {
+			t.Errorf("Redemptions(%q) was sent", code)
+		}
+	}
+	if n := calls.Load(); n != 0 {
+		t.Errorf("%d requests reached the server", n)
+	}
+	// A dot inside a code is only a character of it.
+	if _, err := c.Promo.DeleteCode(ctx, "v1.2"); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	cases := []struct {
 		name    string

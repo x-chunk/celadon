@@ -144,6 +144,17 @@ func TestAdminCodes(t *testing.T) {
 		t.Errorf("redemptions = %q", r.stdout)
 	}
 	h.run("", "admin", "codes", "delete", "SUMMER25", "--yes").wantCode(t, ExitOK)
+
+	// A code is one segment of the path, whatever it carries.
+	calls := h.api.calls()
+	r = h.run("", "admin", "codes", "edit", "a/b", "--max", "5", "--dry-run").wantCode(t, ExitOK)
+	if !strings.Contains(r.stderr, "PATCH /admin/promo/codes/a%2Fb") {
+		t.Errorf("dry run = %q", r.stderr)
+	}
+	h.run("", "admin", "codes", "delete", "..", "--yes").wantCode(t, ExitError)
+	if h.api.calls() != calls {
+		t.Error("a dry run or a dot segment reached the API")
+	}
 }
 
 func TestAdminCodeConflict(t *testing.T) {

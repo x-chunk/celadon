@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 )
@@ -71,7 +72,11 @@ func (s *PromoService) Codes(ctx context.Context, req *CodeListRequest) ([]Code,
 //
 // GET /admin/promo/codes/{code}.
 func (s *PromoService) Code(ctx context.Context, code string) (Code, *Meta, error) {
-	return s.get[Code](ctx, codePath(code), nil)
+	p, err := codePath(code)
+	if err != nil {
+		return Code{}, nil, err
+	}
+	return s.get[Code](ctx, p, nil)
 }
 
 // CreateCode issues a code.
@@ -85,14 +90,22 @@ func (s *PromoService) CreateCode(ctx context.Context, req CodeCreateRequest) (C
 //
 // PATCH /admin/promo/codes/{code}.
 func (s *PromoService) UpdateCode(ctx context.Context, code string, req CodeUpdateRequest) (Code, *Meta, error) {
-	return s.patch[Code](ctx, codePath(code), req)
+	p, err := codePath(code)
+	if err != nil {
+		return Code{}, nil, err
+	}
+	return s.patch[Code](ctx, p, req)
 }
 
 // DeleteCode removes a code. What it has already granted stays granted.
 //
 // DELETE /admin/promo/codes/{code}.
 func (s *PromoService) DeleteCode(ctx context.Context, code string) (*Meta, error) {
-	_, meta, err := s.del[none](ctx, codePath(code))
+	p, err := codePath(code)
+	if err != nil {
+		return nil, err
+	}
+	_, meta, err := s.del[none](ctx, p)
 	return meta, err
 }
 
@@ -100,11 +113,24 @@ func (s *PromoService) DeleteCode(ctx context.Context, code string) (*Meta, erro
 //
 // GET /admin/promo/codes/{code}/redemptions.
 func (s *PromoService) Redemptions(ctx context.Context, code string, req *RedemptionListRequest) ([]Redemption, *Meta, error) {
-	return s.get[[]Redemption](ctx, codePath(code)+"/redemptions", req.query())
+	p, err := codePath(code)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.get[[]Redemption](ctx, p+"/redemptions", req.query())
 }
 
 func campaignPath(id int64) string { return promoPath + "campaigns/" + strconv.FormatInt(id, 10) }
 
 // codePath escapes the code, which is typed by a person and may carry
-// anything, into one path segment.
-func codePath(code string) string { return promoPath + "codes/" + url.PathEscape(code) }
+// anything, into one path segment. Nothing, "." and ".." are refused rather
+// than sent: escaping leaves a dot as it is, and a dot segment — encoded or
+// not — is a step along the path that would take the call to another route,
+// DELETE /admin/promo/codes/.. to DELETE /admin/promo.
+func codePath(code string) (string, error) {
+	switch code {
+	case "", ".", "..":
+		return "", fmt.Errorf("admin: %q is not a promo code", code)
+	}
+	return promoPath + "codes/" + url.PathEscape(code), nil
+}

@@ -61,7 +61,10 @@ func newPortraitCmd(env *Env) *cobra.Command {
 		Short:   "Describe the person on the other side of a chat",
 		GroupID: groupArchive,
 		Long: `Read a whole conversation and describe the person on the other side: the
-archetype they fall into, the traits behind it, what they write about and when.
+archetype they fall into, the traits behind it, what they write about and when,
+which of the account's other conversations sound like it, and what is worth
+knowing about the analysis — a style that shifted, say. Whether the last two
+are given depends on the plan.
 
 A portrait whose model is still being fitted is refused with a time to come
 back; --wait keeps asking until it is ready or --timeout runs out. A chat too
@@ -144,24 +147,62 @@ func printPortrait(env *Env, pt teal.Portrait) {
 	for _, h := range pt.Rhythm.PeakHours {
 		hours = append(hours, fmt.Sprintf("%02d:00", h))
 	}
-	p.Details([]output.KV{
+	pairs := []output.KV{
 		{Key: "Archetype", Value: fmt.Sprintf("%s (fit %.0f%%)", output.Or(pt.Archetype.Label), pt.Archetype.Fit*100)},
-		{Key: "Confidence", Value: fmt.Sprintf("%s (%.2f)", output.Or(pt.Confidence.Level), pt.Confidence.Score)},
-		{Key: "Messages", Value: fmt.Sprintf("%d, %s → %s", pt.Subject.Messages, output.Time(pt.Subject.First), output.Time(pt.Subject.Last))},
-		{Key: "Rhythm", Value: strings.Join(nonEmpty(pt.Rhythm.Chronotype, pt.Rhythm.Tempo, pt.Rhythm.Week), " · ")},
-		{Key: "Peak hours", Value: output.Or(strings.Join(hours, ", "))},
-		{Key: "Per day", Value: fmt.Sprintf("%.1f messages, %.0f%% media", pt.Activity.MessagesPerDay, pt.Activity.MediaShare*100)},
-		{Key: "Topics", Value: output.Or(strings.Join(pt.Topics, ", "))},
-		{Key: "Built", Value: fmt.Sprintf("%s (model v%d%s)", output.Time(pt.BuiltAt), pt.Model.Version, cachedNote(pt.Cached))},
-	})
+	}
+	if pt.Archetype.Description != "" {
+		pairs = append(pairs, output.KV{Key: "Which is", Value: pt.Archetype.Description})
+	}
+	if len(pt.Archetype.Terms) > 0 {
+		// The archetype's own words, not this subject's.
+		pairs = append(pairs, output.KV{Key: "Its words", Value: strings.Join(pt.Archetype.Terms, ", ")})
+	}
+	p.Details(append(pairs,
+		output.KV{Key: "Confidence", Value: fmt.Sprintf("%s (%.2f)", output.Or(pt.Confidence.Level), pt.Confidence.Score)},
+		output.KV{Key: "Messages", Value: fmt.Sprintf("%d, %s → %s", pt.Subject.Messages, output.Time(pt.Subject.First), output.Time(pt.Subject.Last))},
+		output.KV{Key: "They wrote", Value: activityText(pt.Activity)},
+		output.KV{Key: "Rhythm", Value: strings.Join(nonEmpty(pt.Rhythm.Chronotype, pt.Rhythm.Tempo, pt.Rhythm.Week), " · ")},
+		output.KV{Key: "Peak hours", Value: output.Or(strings.Join(hours, ", "))},
+		output.KV{Key: "Per day", Value: fmt.Sprintf("%.1f messages, %.0f%% media", pt.Activity.MessagesPerDay, pt.Activity.MediaShare*100)},
+		output.KV{Key: "Topics", Value: output.Or(strings.Join(pt.Topics, ", "))},
+		output.KV{Key: "Built", Value: fmt.Sprintf("%s (model v%d%s)", output.Time(pt.BuiltAt), pt.Model.Version, cachedNote(pt.Cached))},
+	))
 	if len(pt.Traits) > 0 {
 		p.Println()
 		rows := make([][]string, 0, len(pt.Traits))
 		for _, t := range pt.Traits {
-			rows = append(rows, []string{t.Name, t.Level, fmt.Sprintf("%+.2fσ", t.Z)})
+			rows = append(rows, []string{t.Name, t.Level, fmt.Sprintf("%+.2fσ", t.Z), t.Note})
 		}
-		p.Table([]string{"trait", "level", "vs. mean"}, rows)
+		p.Table([]string{"trait", "level", "vs. mean", "note"}, rows)
 	}
+	if len(pt.Similar) > 0 {
+		p.Println()
+		rows := make([][]string, 0, len(pt.Similar))
+		for _, s := range pt.Similar {
+			rows = append(rows, []string{output.Or(s.Title), fmt.Sprintf("%.2f", s.Score)})
+		}
+		p.Table([]string{"sounds like", "score"}, rows)
+	}
+	if len(pt.Signals) > 0 {
+		p.Println()
+		p.Heading("Worth knowing")
+		for _, sig := range pt.Signals {
+			line := "• " + output.OneLine(sig.Text)
+			if sig.Severity != "" && sig.Severity != "info" {
+				line += " (" + output.OneLine(sig.Severity) + ")"
+			}
+			p.Println(line)
+		}
+	}
+}
+
+// activityText is how much a subject wrote, and over what span.
+func activityText(a teal.PortraitActivity) string {
+	s := fmt.Sprintf("%d messages, %d words, %d distinct", a.Messages, a.Words, a.UniqueTerms)
+	if !a.First.IsZero() || !a.Last.IsZero() {
+		s += ", " + output.Time(a.First) + " → " + output.Time(a.Last)
+	}
+	return s
 }
 
 func cachedNote(cached bool) string {

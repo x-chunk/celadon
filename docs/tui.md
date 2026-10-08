@@ -92,7 +92,10 @@ more than one line is stored with `celadon vault store --secret-file`.
 ## Insights
 
 At a Glance, and a chat's portrait: `/` and a chat id, or `p` on a chat in the
-Archive tab. A portrait whose model is still being fitted is asked for again
+Archive tab. A portrait shows the archetype and what it means, the traits with
+their notes, how much the person wrote and when, and — as the plan allows —
+the conversations that sound like it and what is worth knowing about the
+analysis. A portrait whose model is still being fitted is asked for again
 when the API says to (at most every 30 seconds), and nothing is charged for the
 wait. A chat too short to portray, or whose other side never wrote, is refused
 until it grows, and the refusal says which.

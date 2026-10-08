@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/api"
@@ -242,16 +243,28 @@ func portraitView(pt teal.Portrait, width int) string {
 		hours = append(hours, fmt.Sprintf("%02d:00", h))
 	}
 	rhythm := strings.Join(nonEmptyStrings(pt.Rhythm.Chronotype, pt.Rhythm.Tempo, pt.Rhythm.Week), " · ")
-	b.WriteString(fields([]field{
-		{"Archetype", fmt.Sprintf("%s (fit %.0f%%)", output.Or(pt.Archetype.Label), pt.Archetype.Fit*100)},
-		{"Confidence", fmt.Sprintf("%s (%.2f)", output.Or(pt.Confidence.Level), pt.Confidence.Score)},
-		{"Messages", fmt.Sprintf("%d, %s → %s", pt.Subject.Messages, output.Time(pt.Subject.First), output.Time(pt.Subject.Last))},
-		{"Rhythm", output.Or(rhythm)},
-		{"Peak hours", output.Or(strings.Join(hours, ", "))},
-		{"Per day", fmt.Sprintf("%.1f messages, %.0f%% media", pt.Activity.MessagesPerDay, pt.Activity.MediaShare*100)},
-		{"Topics", output.Or(strings.Join(pt.Topics, ", "))},
-		{"Built", fmt.Sprintf("%s · model v%d", output.Time(pt.BuiltAt), pt.Model.Version)},
-	}, width))
+	rows := []field{{"Archetype", fmt.Sprintf("%s (fit %.0f%%)", output.Or(pt.Archetype.Label), pt.Archetype.Fit*100)}}
+	if pt.Archetype.Description != "" {
+		rows = append(rows, field{"Which is", pt.Archetype.Description})
+	}
+	if len(pt.Archetype.Terms) > 0 {
+		// The archetype's own words, not this subject's.
+		rows = append(rows, field{"Its words", strings.Join(pt.Archetype.Terms, ", ")})
+	}
+	wrote := fmt.Sprintf("%d messages, %d words, %d distinct", pt.Activity.Messages, pt.Activity.Words, pt.Activity.UniqueTerms)
+	if !pt.Activity.First.IsZero() || !pt.Activity.Last.IsZero() {
+		wrote += ", " + output.Time(pt.Activity.First) + " → " + output.Time(pt.Activity.Last)
+	}
+	b.WriteString(fields(append(rows,
+		field{"Confidence", fmt.Sprintf("%s (%.2f)", output.Or(pt.Confidence.Level), pt.Confidence.Score)},
+		field{"Messages", fmt.Sprintf("%d, %s → %s", pt.Subject.Messages, output.Time(pt.Subject.First), output.Time(pt.Subject.Last))},
+		field{"They wrote", wrote},
+		field{"Rhythm", output.Or(rhythm)},
+		field{"Peak hours", output.Or(strings.Join(hours, ", "))},
+		field{"Per day", fmt.Sprintf("%.1f messages, %.0f%% media", pt.Activity.MessagesPerDay, pt.Activity.MediaShare*100)},
+		field{"Topics", output.Or(strings.Join(pt.Topics, ", "))},
+		field{"Built", fmt.Sprintf("%s · model v%d", output.Time(pt.BuiltAt), pt.Model.Version)},
+	), width))
 	if len(pt.Traits) > 0 {
 		b.WriteString("\n\n" + styleHeading.Render("Traits") + "\n")
 		nameW := 0
@@ -262,7 +275,31 @@ func portraitView(pt teal.Portrait, width int) string {
 		for _, tr := range pt.Traits {
 			name := output.Truncate(output.OneLine(tr.Name), nameW)
 			name += strings.Repeat(" ", nameW-output.Width(name))
-			b.WriteString(fmt.Sprintf("%s  %-6s %s %+.2fσ\n", name, tr.Level, zBar(tr.Z, 17), tr.Z))
+			row := fmt.Sprintf("%s  %-6s %s %+.2fσ", name, output.OneLine(tr.Level), zBar(tr.Z, 17), tr.Z)
+			if tr.Note != "" {
+				room := width - lipgloss.Width(row) - 2
+				row += "  " + styleMuted.Render(output.Truncate(output.OneLine(tr.Note), max(room, 0)))
+			}
+			b.WriteString(row + "\n")
+		}
+	}
+	if len(pt.Similar) > 0 {
+		b.WriteString("\n" + styleHeading.Render("Sounds like") + "\n")
+		for _, sim := range pt.Similar {
+			b.WriteString(output.Truncate(fmt.Sprintf("%.2f  %s", sim.Score, output.OneLine(output.Or(sim.Title))), width) + "\n")
+		}
+	}
+	if len(pt.Signals) > 0 {
+		b.WriteString("\n" + styleHeading.Render("Worth knowing") + "\n")
+		for _, sig := range pt.Signals {
+			style := styleMuted
+			switch sig.Severity {
+			case "warning":
+				style = styleWarn
+			case "notice":
+				style = styleHeading
+			}
+			b.WriteString(style.Render(wrapText("• "+sig.Text, width)) + "\n")
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")

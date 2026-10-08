@@ -293,3 +293,30 @@ func TestSearchTurnsPagesForFreeByTheQueryID(t *testing.T) {
 		t.Errorf("stderr = %q", r.stderr)
 	}
 }
+
+var samplePortrait = map[string]any{
+	"chat_id": -100, "summary": "Writes long, late and about work.",
+	"subject":   map[string]any{"title": "Ann Weber", "username": "ann", "messages": 1200},
+	"archetype": map[string]any{"label": "The Essayist", "fit": 0.8, "description": "Long messages, carefully built.", "terms": []string{"however", "therefore"}},
+	"traits":    []any{map[string]any{"name": "Sentence length", "level": "high", "z": 1.7, "note": "twice the usual"}},
+	"activity":  map[string]any{"messages": 640, "words": 52000, "unique_terms": 6100, "first": "2025-01-02T10:00:00Z", "last": "2026-09-20T23:10:00Z"},
+	"similar":   []any{map[string]any{"title": "Bob \x1b[31mStone", "score": 0.73}},
+	"signals":   []any{map[string]any{"kind": "style_shift", "key": "style.shift", "text": "Their style shifted in August.", "severity": "warning"}},
+}
+
+func TestPortraitShowsWhoItSoundsLikeAndWhatIsWorthKnowing(t *testing.T) {
+	h := newHarness(t).loggedIn()
+	h.api.ok("GET", "/v1/portraits/-100", samplePortrait)
+	r := h.run("", "portrait", "--", "-100").wantCode(t, ExitOK)
+	for _, want := range []string{
+		"Long messages, carefully built.", "however, therefore", "640 messages, 52000 words, 6100 distinct, 2025-01-",
+		"twice the usual", "SOUNDS LIKE", "Bob �[31mStone", "0.73", "Their style shifted in August. (warning)",
+	} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, r.stdout)
+		}
+	}
+	if strings.Contains(r.stdout, "\x1b") {
+		t.Error("an escape sequence from a chat title reached the terminal")
+	}
+}

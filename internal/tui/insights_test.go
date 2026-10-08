@@ -12,7 +12,13 @@ func TestArchiveChatSearchAndPortraitJump(t *testing.T) {
 	d := newDriver(t)
 	d.api.ok("GET", "/v1/chats", map[string]any{"chats": []any{map[string]any{"id": -100, "title": "Ann", "messages": 12}}, "total": 1})
 	d.api.ok("POST", "/v1/messages/search", map[string]any{"messages": []any{}, "total": 0, "pages": 0})
-	d.api.ok("GET", "/v1/portraits/-100", map[string]any{"chat_id": -100, "subject": map[string]any{"title": "Ann"}, "archetype": map[string]any{"label": "The Essayist", "fit": 0.8}})
+	d.api.ok("GET", "/v1/portraits/-100", map[string]any{
+		"chat_id": -100, "subject": map[string]any{"title": "Ann"},
+		"archetype": map[string]any{"label": "The Essayist", "fit": 0.8, "description": "Long messages, carefully built.", "terms": []string{"however"}},
+		"traits":    []any{map[string]any{"name": "Sentence length", "level": "high", "z": 1.7, "note": "twice the usual"}},
+		"similar":   []any{map[string]any{"title": "Bob Stone", "score": 0.73}},
+		"signals":   []any{map[string]any{"text": "Their style shifted in August.", "severity": "warning"}},
+	})
 	d.api.ok("GET", "/v1/insights", map[string]any{"insights": []string{"You have 12 messages."}})
 
 	d.open("Archive")
@@ -27,7 +33,8 @@ func TestArchiveChatSearchAndPortraitJump(t *testing.T) {
 	if d.activeTitle() != "Insights" {
 		t.Fatalf("p opened %s", d.activeTitle())
 	}
-	d.wantView("The Essayist (fit 80%)", "You have 12 messages.")
+	d.wantView("The Essayist (fit 80%)", "You have 12 messages.", "Long messages, carefully built.", "twice the usual",
+		"Sounds like", "0.73  Bob Stone", "Worth knowing", "Their style shifted in August.")
 }
 
 func TestPortraitRetriesWhileTheModelTrains(t *testing.T) {

@@ -58,10 +58,11 @@ shared limits each spends one of the plan's daily searches.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			res, meta, err := c.Archive.Search(ctx, req)
+			r, err := c.Archive.Search(ctx, req).Value()
 			if err != nil {
 				return err
 			}
+			res := r.Data
 			p := env.Printer()
 			return p.Result(res, func() error {
 				if len(res.Messages) == 0 {
@@ -70,7 +71,7 @@ shared limits each spends one of the plan's daily searches.`,
 					p.Table([]string{"id", "chat", "from", "sent", "text"}, messageRows(env, res.Messages))
 					p.Info("page %d of %d · %d matches", res.Page+1, max(res.Pages, 1), res.Total)
 				}
-				p.Meta(meta)
+				p.Meta(r.Meta)
 				return nil
 			})
 		},
@@ -142,14 +143,14 @@ still billed as one query.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			res, meta, err := c.Archive.Count(ctx, req)
+			r, err := c.Archive.Count(ctx, req).Value()
 			if err != nil {
 				return err
 			}
 			p := env.Printer()
-			return p.Result(res, func() error {
-				p.Println(res.Total)
-				p.Meta(meta)
+			return p.Result(r.Data, func() error {
+				p.Println(r.Data.Total)
+				p.Meta(r.Meta)
 				return nil
 			})
 		},
@@ -203,10 +204,11 @@ is refunded, and celadon says so.`,
 			}
 			ctx, cancel := env.Context(cmd, true)
 			defer cancel()
-			body, meta, err := c.Archive.Export(ctx, req)
+			r, err := c.Archive.Export(ctx, req).Value()
 			if err != nil {
 				return err
 			}
+			body, meta := r.Data, r.Meta
 			defer body.Close()
 
 			total := meta.Header.Get("X-Aether-Export-Total")
@@ -329,10 +331,11 @@ func newChatsCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			list, meta, err := c.Archive.Chats(ctx, &teal.ChatsRequest{Page: page - 1})
+			r, err := c.Archive.Chats(ctx, &teal.ChatsRequest{Page: page - 1}).Value()
 			if err != nil {
 				return err
 			}
+			list, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(list, func() error {
 				if len(list.Chats) == 0 {
@@ -383,10 +386,11 @@ not Telegram's message id, which is only unique inside a chat.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			m, meta, err := c.Archive.Message(ctx, id)
+			r, err := c.Archive.Message(ctx, id).Value()
 			if err != nil {
 				return err
 			}
+			m, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(m, func() error {
 				pairs := []output.KV{
@@ -435,10 +439,11 @@ func newMessageVersionsCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			vl, meta, err := c.Archive.Versions(ctx, id)
+			r, err := c.Archive.Versions(ctx, id).Value()
 			if err != nil {
 				return err
 			}
+			vl, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(vl, func() error {
 				for i, v := range vl.Versions {
@@ -472,10 +477,11 @@ func newFieldsCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			fields, meta, err := c.Archive.Fields(ctx)
+			r, err := c.Archive.Fields(ctx).Value()
 			if err != nil {
 				return err
 			}
+			fields, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(fields, func() error {
 				rows := make([][]string, 0, len(fields))

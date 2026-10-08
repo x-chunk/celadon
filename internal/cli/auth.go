@@ -118,10 +118,11 @@ profile, then "default". The first profile stored becomes the default.`,
 				if err != nil {
 					return err
 				}
-				app, _, err := c.App.Get(ctx)
+				r, err := c.App.Get(ctx).Value()
 				if err != nil {
 					return fmt.Errorf("checking the key against %s: %w", baseURL, err)
 				}
+				app := r.Data
 				profile.AppID, profile.AppName, profile.KeyPrefix = app.ID, app.Name, app.KeyPrefix
 				if app.Disabled {
 					env.Printer().Warn("application %q is disabled: its account's plan has lapsed, and calls will be refused until it is renewed", app.Name)
@@ -351,7 +352,7 @@ func checkProfile(ctx context.Context, env *Env, r config.Resolved, row *profile
 		row.State, row.Detail = stateError, err.Error()
 		return
 	}
-	app, _, err := c.App.Get(ctx)
+	res, err := c.App.Get(ctx).Value()
 	if err != nil {
 		if teal.IsCode(err, teal.CodeUnauthorized, teal.CodeAccountBlocked) {
 			row.State = stateRejected
@@ -361,6 +362,7 @@ func checkProfile(ctx context.Context, env *Env, r config.Resolved, row *profile
 		row.Detail = api.Explain(err, time.Now()).Title
 		return
 	}
+	app := res.Data
 	row.State = stateValid
 	row.App, row.AppID = app.Name, app.ID
 	row.Billing = string(app.Billing)

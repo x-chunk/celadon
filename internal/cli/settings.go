@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"go.xchunk.org/anvil/v2/result"
 	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/output"
@@ -55,16 +56,16 @@ func showAllSettings(cmd *cobra.Command, env *Env) error {
 	ctx, cancel := env.Context(cmd, false)
 	defer cancel()
 	var all allSettings
-	if all.Retention, _, err = c.Settings.Retention(ctx); err != nil {
+	if err := take(c.Settings.Retention(ctx), &all.Retention); err != nil {
 		return err
 	}
-	if all.Vault, _, err = c.Settings.Vault(ctx); err != nil {
+	if err := take(c.Settings.Vault(ctx), &all.Vault); err != nil {
 		return err
 	}
-	if all.Actions, _, err = c.Settings.Actions(ctx); err != nil {
+	if err := take(c.Settings.Actions(ctx), &all.Actions); err != nil {
 		return err
 	}
-	if all.Language, _, err = c.Settings.Language(ctx); err != nil {
+	if err := take(c.Settings.Language(ctx), &all.Language); err != nil {
 		return err
 	}
 	p := env.Printer()
@@ -84,11 +85,23 @@ func showAllSettings(cmd *cobra.Command, env *Env) error {
 	})
 }
 
+// take puts the payload of a reply into dst, or answers with its refusal.
+func take[T any](r reply[T], dst *T) error {
+	res, err := r.Value()
+	if err == nil {
+		*dst = res.Data
+	}
+	return err
+}
+
+// refused is a reply that never left: a value the command refuses itself.
+func refused[T any](err error) reply[T] { return result.Err[teal.Response[T]](err) }
+
 // settingCmd is the shape all four settings share: without flags it reads,
 // with any of them it writes, and either way it prints what is in force.
 func settingCmd[T any](env *Env, use, short, long string,
-	get func(context.Context, *teal.Client) (T, *teal.Meta, error),
-	set func(context.Context, *teal.Client, *cobra.Command) (T, *teal.Meta, error),
+	get func(context.Context, *teal.Client) reply[T],
+	set func(context.Context, *teal.Client, *cobra.Command) reply[T],
 	show func(*Env, T),
 ) *cobra.Command {
 	return &cobra.Command{
@@ -109,25 +122,21 @@ func settingCmd[T any](env *Env, use, short, long string,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			var (
-				v    T
-				meta *teal.Meta
-			)
+			fetch := get
 			if changing {
-				v, meta, err = set(ctx, c, cmd)
-			} else {
-				v, meta, err = get(ctx, c)
+				fetch = func(ctx context.Context, c *teal.Client) reply[T] { return set(ctx, c, cmd) }
 			}
+			r, err := fetch(ctx, c).Value()
 			if err != nil {
 				return err
 			}
 			p := env.Printer()
-			return p.Result(v, func() error {
+			return p.Result(r.Data, func() error {
 				if changing {
 					p.Success("Saved")
 				}
-				show(env, v)
-				p.Meta(meta)
+				show(env, r.Data)
+				p.Meta(r.Meta)
 				return nil
 			})
 		},
@@ -148,22 +157,22 @@ archive is deleted from Telegram too.
 
 The window and the deletion in the chat are paid settings: a plan that does not
 open one refuses the change rather than storing it quietly.`,
-		func(ctx context.Context, c *teal.Client) (teal.Retention, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client) reply[teal.Retention] {
 			return c.Settings.Retention(ctx)
 		},
-		func(ctx context.Context, c *teal.Client, cmd *cobra.Command) (teal.Retention, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client, cmd *cobra.Command) reply[teal.Retention] {
 			var req teal.RetentionUpdateRequest
 			if cmd.Flags().Changed("mode") {
 				m := strings.ToLower(strings.TrimSpace(mode))
 				if m != teal.RetentionKeep && m != teal.RetentionRotate {
-					return teal.Retention{}, nil, usageError(fmt.Errorf("invalid --mode %q: use keep or rotate", mode))
+					return refused[teal.Retention](usageError(fmt.Errorf("invalid --mode %q: use keep or rotate", mode)))
 				}
 				req.Mode = &m
 			}
 			if cmd.Flags().Changed("ttl") {
 				secs, err := parseSeconds(ttl)
 				if err != nil {
-					return teal.Retention{}, nil, err
+					return refused[teal.Retention](err)
 				}
 				req.TTLSeconds = &secs
 			}
@@ -213,19 +222,19 @@ func newVaultSettingsCmd(env *Env) *cobra.Command {
 		"Show or change how long a revealed secret stays in the chat",
 		`Show or change how long a decrypted vault message stays in the Telegram chat
 before the bot takes it back. "default" goes back to the plan's own timer.`,
-		func(ctx context.Context, c *teal.Client) (teal.VaultSettings, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client) reply[teal.VaultSettings] {
 			return c.Settings.Vault(ctx)
 		},
-		func(ctx context.Context, c *teal.Client, _ *cobra.Command) (teal.VaultSettings, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client, _ *cobra.Command) reply[teal.VaultSettings] {
 			v := strings.ToLower(strings.TrimSpace(revealTTL))
 			var secs int64
 			if v != "default" {
 				var err error
 				if secs, err = parseSeconds(v); err != nil {
-					return teal.VaultSettings{}, nil, err
+					return refused[teal.VaultSettings](err)
 				}
 				if secs == 0 {
-					return teal.VaultSettings{}, nil, usageError(errors.New(`the timer cannot be switched off; use "default" for the plan's own`))
+					return refused[teal.VaultSettings](usageError(errors.New(`the timer cannot be switched off; use "default" for the plan's own`)))
 				}
 			}
 			return c.Settings.UpdateVault(ctx, teal.VaultSettingsUpdateRequest{RevealTTLSeconds: int(secs)})
@@ -249,10 +258,10 @@ func newActionSettingsCmd(env *Env) *cobra.Command {
 		"Show or change the character shortcuts are typed behind",
 		`Show or change the prefix a shortcut is typed behind, so "kiss" fires on
 ".kiss". It is one of `+strings.Join(actionPrefixes, " ")+`.`,
-		func(ctx context.Context, c *teal.Client) (teal.ActionSettings, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client) reply[teal.ActionSettings] {
 			return c.Settings.Actions(ctx)
 		},
-		func(ctx context.Context, c *teal.Client, _ *cobra.Command) (teal.ActionSettings, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client, _ *cobra.Command) reply[teal.ActionSettings] {
 			return c.Settings.UpdateActions(ctx, teal.ActionSettingsUpdateRequest{Prefix: strings.TrimSpace(prefix)})
 		},
 		printActionSettings,
@@ -289,18 +298,18 @@ func newLanguageCmd(env *Env) *cobra.Command {
 		"Show or change the language the bot speaks",
 		`Show or change the language every screen of the bot is drawn in. --auto goes
 back to following the Telegram client.`,
-		func(ctx context.Context, c *teal.Client) (teal.Language, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client) reply[teal.Language] {
 			return c.Settings.Language(ctx)
 		},
-		func(ctx context.Context, c *teal.Client, cmd *cobra.Command) (teal.Language, *teal.Meta, error) {
+		func(ctx context.Context, c *teal.Client, cmd *cobra.Command) reply[teal.Language] {
 			if err := exclusive(cmd, "set", "auto"); err != nil {
-				return teal.Language{}, nil, err
+				return refused[teal.Language](err)
 			}
 			code := strings.ToLower(strings.TrimSpace(set))
 			if auto {
 				code = ""
 			} else if code == "" {
-				return teal.Language{}, nil, usageError(errors.New("--set needs a language code; use --auto to follow Telegram"))
+				return refused[teal.Language](usageError(errors.New("--set needs a language code; use --auto to follow Telegram")))
 			}
 			return c.Settings.UpdateLanguage(ctx, teal.LanguageUpdateRequest{Language: code})
 		},

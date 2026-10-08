@@ -67,7 +67,7 @@ func (t *insightsTab) init() tea.Cmd { return t.loadInsights() }
 func (t *insightsTab) loadInsights() tea.Cmd {
 	t.inSeq++
 	t.inErr = nil
-	return call(t.be, "insights", t.inSeq, func(ctx context.Context, c *teal.Client) (teal.Insights, *teal.Meta, error) {
+	return call(t.be, "insights", t.inSeq, func(ctx context.Context, c *teal.Client) reply[teal.Insights] {
 		return c.Insights.Get(ctx)
 	})
 }
@@ -78,7 +78,7 @@ func (t *insightsTab) loadPortrait(chat int64) tea.Cmd {
 	t.loading = true
 	t.ptErr = nil
 	t.retryAt = time.Time{}
-	return call(t.be, "portrait", t.ptSeq, func(ctx context.Context, c *teal.Client) (teal.Portrait, *teal.Meta, error) {
+	return call(t.be, "portrait", t.ptSeq, func(ctx context.Context, c *teal.Client) reply[teal.Portrait] {
 		return c.Insights.Portrait(ctx, chat)
 	})
 }

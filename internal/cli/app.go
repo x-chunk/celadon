@@ -36,10 +36,11 @@ func newAppViewCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			app, meta, err := c.App.Get(ctx)
+			r, err := c.App.Get(ctx).Value()
 			if err != nil {
 				return err
 			}
+			app, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(app, func() error {
 				p.Heading(app.Name)
@@ -101,10 +102,11 @@ func newAppUsageCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			u, meta, err := c.App.Usage(ctx, &teal.UsageRequest{Days: days, ByDay: byDay})
+			r, err := c.App.Usage(ctx, &teal.UsageRequest{Days: days, ByDay: byDay}).Value()
 			if err != nil {
 				return err
 			}
+			u, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(u, func() error {
 				p.Heading(fmt.Sprintf("%s → %s: %d calls, %s", u.From, u.To, u.Calls, output.Money(u.Credits)))
@@ -151,10 +153,11 @@ func newAppPricesCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			pr, meta, err := c.App.Prices(ctx)
+			r, err := c.App.Prices(ctx).Value()
 			if err != nil {
 				return err
 			}
+			pr, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(pr, func() error {
 				rows := make([][]string, 0, len(pr.Prices))
@@ -206,10 +209,11 @@ func newAccountViewCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			a, meta, err := c.App.Account(ctx)
+			r, err := c.App.Account(ctx).Value()
 			if err != nil {
 				return err
 			}
+			a, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(a, func() error {
 				p.Details([]output.KV{
@@ -242,10 +246,11 @@ func newAccountQuotasCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			qs, meta, err := c.App.Quotas(ctx)
+			r, err := c.App.Quotas(ctx).Value()
 			if err != nil {
 				return err
 			}
+			qs, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(qs, func() error {
 				printQuotas(env, qs)

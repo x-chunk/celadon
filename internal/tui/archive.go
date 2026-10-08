@@ -98,7 +98,7 @@ func (t *archiveTab) loadChats(page int) tea.Cmd {
 	t.chatsSeq++
 	t.chatsLoading = true
 	t.chatsErr = nil
-	return call(t.be, "chats", t.chatsSeq, func(ctx context.Context, c *teal.Client) (teal.ChatList, *teal.Meta, error) {
+	return call(t.be, "chats", t.chatsSeq, func(ctx context.Context, c *teal.Client) reply[teal.ChatList] {
 		return c.Archive.Chats(ctx, &teal.ChatsRequest{Page: page})
 	})
 }
@@ -115,7 +115,7 @@ func (t *archiveTab) search(page int) tea.Cmd {
 		id := t.chat.ID
 		req.Chat = &id
 	}
-	return call(t.be, "search", t.searchSeq, func(ctx context.Context, c *teal.Client) (teal.SearchResult, *teal.Meta, error) {
+	return call(t.be, "search", t.searchSeq, func(ctx context.Context, c *teal.Client) reply[teal.SearchResult] {
 		return c.Archive.Search(ctx, req)
 	})
 }
@@ -212,7 +212,7 @@ func (t *archiveTab) key(msg tea.KeyMsg) tea.Cmd {
 			if t.detail.versions == nil && !t.detail.loadingVer {
 				t.detail.loadingVer = true
 				id := t.detail.msg.ID
-				return call(t.be, "versions", t.detail.seq, func(ctx context.Context, c *teal.Client) (teal.VersionList, *teal.Meta, error) {
+				return call(t.be, "versions", t.detail.seq, func(ctx context.Context, c *teal.Client) reply[teal.VersionList] {
 					return c.Archive.Versions(ctx, id)
 				})
 			}
@@ -304,7 +304,7 @@ func (t *archiveTab) open(m teal.Message) tea.Cmd {
 	t.searchSeq++ // a card replaces the list; nothing late may redraw it
 	t.detail = &messageCard{msg: m, seq: t.searchSeq, vp: viewport.New(0, 0)}
 	id := m.ID
-	return call(t.be, "message", t.detail.seq, func(ctx context.Context, c *teal.Client) (teal.Message, *teal.Meta, error) {
+	return call(t.be, "message", t.detail.seq, func(ctx context.Context, c *teal.Client) reply[teal.Message] {
 		return c.Archive.Message(ctx, id)
 	})
 }

@@ -89,7 +89,7 @@ func (t *actionsTab) load() tea.Cmd {
 	t.seq++
 	t.loading = true
 	t.err = nil
-	return call(t.be, "actions", t.seq, func(ctx context.Context, c *teal.Client) (teal.ActionList, *teal.Meta, error) {
+	return call(t.be, "actions", t.seq, func(ctx context.Context, c *teal.Client) reply[teal.ActionList] {
 		return c.Actions.List(ctx)
 	})
 }
@@ -160,7 +160,7 @@ func (t *actionsTab) key(msg tea.KeyMsg) tea.Cmd {
 				t.mode = actionsBrowse
 				return nil
 			}
-			return callAck(t.be, "action-delete", 0, func(ctx context.Context, c *teal.Client) (*teal.Meta, error) {
+			return call(t.be, "action-delete", 0, func(ctx context.Context, c *teal.Client) reply[ack] {
 				return c.Actions.Delete(ctx, a.ID)
 			})
 		case "n", "N", "esc":
@@ -204,7 +204,7 @@ func (t *actionsTab) key(msg tea.KeyMsg) tea.Cmd {
 	case "p":
 		t.mode = actionsPlaceholders
 		if t.placeholders == nil {
-			return call(t.be, "placeholders", 0, func(ctx context.Context, c *teal.Client) ([]teal.Placeholder, *teal.Meta, error) {
+			return call(t.be, "placeholders", 0, func(ctx context.Context, c *teal.Client) reply[[]teal.Placeholder] {
 				return c.Actions.Placeholders(ctx)
 			})
 		}
@@ -275,7 +275,7 @@ func (t *actionsTab) save() tea.Cmd {
 	t.saving = true
 	t.formErr = nil
 	if t.editing == 0 {
-		return call(t.be, "action-save", 0, func(ctx context.Context, c *teal.Client) (teal.Action, *teal.Meta, error) {
+		return call(t.be, "action-save", 0, func(ctx context.Context, c *teal.Client) reply[teal.Action] {
 			return c.Actions.Create(ctx, teal.ActionCreateRequest{Name: name, Body: body})
 		})
 	}
@@ -293,7 +293,7 @@ func (t *actionsTab) save() tea.Cmd {
 		t.notice = "Nothing changed."
 		return nil
 	}
-	return call(t.be, "action-save", 0, func(ctx context.Context, c *teal.Client) (teal.Action, *teal.Meta, error) {
+	return call(t.be, "action-save", 0, func(ctx context.Context, c *teal.Client) reply[teal.Action] {
 		return c.Actions.Update(ctx, id, req)
 	})
 }

@@ -55,10 +55,11 @@ func newActionsListCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			list, meta, err := c.Actions.List(ctx)
+			r, err := c.Actions.List(ctx).Value()
 			if err != nil {
 				return err
 			}
+			list, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(list, func() error {
 				if len(list.Actions) == 0 {
@@ -104,10 +105,11 @@ func newActionsViewCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			a, meta, err := c.Actions.Get(ctx, id)
+			r, err := c.Actions.Get(ctx, id).Value()
 			if err != nil {
 				return err
 			}
+			a, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(a, func() error {
 				printAction(env, a)
@@ -220,10 +222,11 @@ charged once, when it is created.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			a, meta, err := c.Actions.Create(ctx, teal.ActionCreateRequest{Name: name, Body: body})
+			r, err := c.Actions.Create(ctx, teal.ActionCreateRequest{Name: name, Body: body}).Value()
 			if err != nil {
 				return err
 			}
+			a, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(a, func() error {
 				p.Success("Created shortcut %q (#%d)", a.Name, a.ID)
@@ -283,11 +286,11 @@ with nothing given, on a terminal, the current body opens in the editor.`,
 			if b.given(cmd) {
 				initial := ""
 				if b.editor {
-					current, _, err := c.Actions.Get(ctx, id)
+					current, err := c.Actions.Get(ctx, id).Value()
 					if err != nil {
 						return err
 					}
-					initial = current.Body
+					initial = current.Data.Body
 				}
 				body, err := b.read(env, cmd, initial)
 				if err != nil {
@@ -301,10 +304,11 @@ with nothing given, on a terminal, the current body opens in the editor.`,
 				env.Printer().Info("Nothing changed.")
 				return nil
 			}
-			a, meta, err := c.Actions.Update(ctx, id, req)
+			r, err := c.Actions.Update(ctx, id, req).Value()
 			if err != nil {
 				return err
 			}
+			a, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(a, func() error {
 				p.Success("Updated shortcut %q (#%d)", a.Name, a.ID)
@@ -339,14 +343,14 @@ func newActionsDeleteCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			meta, err := c.Actions.Delete(ctx, id)
+			r, err := c.Actions.Delete(ctx, id).Value()
 			if err != nil {
 				return err
 			}
 			p := env.Printer()
 			return p.Result(map[string]any{"ok": true, "id": id}, func() error {
 				p.Success("Deleted shortcut #%d", id)
-				p.Meta(meta)
+				p.Meta(r.Meta)
 				return nil
 			})
 		},
@@ -367,10 +371,11 @@ func newActionsPlaceholdersCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			list, meta, err := c.Actions.Placeholders(ctx)
+			r, err := c.Actions.Placeholders(ctx).Value()
 			if err != nil {
 				return err
 			}
+			list, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(list, func() error {
 				rows := make([][]string, 0, len(list))

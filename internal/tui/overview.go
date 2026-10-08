@@ -48,13 +48,13 @@ func (t *overviewTab) load() tea.Cmd {
 	seq := t.seq
 	t.err = nil
 	return tea.Batch(
-		call(t.be, "overview", seq, func(ctx context.Context, c *teal.Client) (teal.Application, *teal.Meta, error) {
+		call(t.be, "overview", seq, func(ctx context.Context, c *teal.Client) reply[teal.Application] {
 			return c.App.Get(ctx)
 		}),
-		call(t.be, "overview", seq, func(ctx context.Context, c *teal.Client) (teal.Account, *teal.Meta, error) {
+		call(t.be, "overview", seq, func(ctx context.Context, c *teal.Client) reply[teal.Account] {
 			return c.App.Account(ctx)
 		}),
-		call(t.be, "overview", seq, func(ctx context.Context, c *teal.Client) (teal.Usage, *teal.Meta, error) {
+		call(t.be, "overview", seq, func(ctx context.Context, c *teal.Client) reply[teal.Usage] {
 			return c.App.Usage(ctx, &teal.UsageRequest{Days: 30})
 		}),
 	)

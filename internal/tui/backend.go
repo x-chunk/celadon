@@ -5,11 +5,16 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"go.xchunk.org/anvil/v2/result"
 	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/admin"
 	"github.com/x-chunk/celadon/internal/metrics"
 )
+
+// reply is what every teal method answers with: the payload and the Meta it
+// came with, or the refusal.
+type reply[T any] = result.Result[teal.Response[T]]
 
 // requestTimeout bounds every call the interface makes. Nothing here streams,
 // so a minute is generous.
@@ -48,26 +53,27 @@ type outcome interface {
 func (d done[T]) metaOf() *teal.Meta { return d.meta }
 func (d done[T]) errOf() error       { return d.err }
 
-// call runs fn off the event loop and delivers its answer as a done[T].
-func call[T any](b *backend, op string, seq int, fn func(context.Context, *teal.Client) (T, *teal.Meta, error)) tea.Cmd {
+// call runs fn off the event loop and delivers its answer as a done[T]. A
+// refusal is delivered with the Meta it carries: the API refunds before it
+// answers, so the balance in it is the balance actually left.
+func call[T any](b *backend, op string, seq int, fn func(context.Context, *teal.Client) reply[T]) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(b.ctx, b.timeout)
 		defer cancel()
-		v, meta, err := fn(ctx, b.client)
-		return done[T]{op: op, seq: seq, val: v, meta: meta, err: err}
+		res, err := fn(ctx, b.client).Value()
+		if err != nil {
+			var meta *teal.Meta
+			if e, ok := teal.AsError(err); ok {
+				meta = e.Meta
+			}
+			return done[T]{op: op, seq: seq, meta: meta, err: err}
+		}
+		return done[T]{op: op, seq: seq, val: res.Data, meta: res.Meta}
 	}
 }
 
 // ack is the payload of a call that answers with nothing but its cost.
-type ack struct{}
-
-// callAck runs a call that returns only a Meta.
-func callAck(b *backend, op string, seq int, fn func(context.Context, *teal.Client) (*teal.Meta, error)) tea.Cmd {
-	return call(b, op, seq, func(ctx context.Context, c *teal.Client) (ack, *teal.Meta, error) {
-		meta, err := fn(ctx, c)
-		return ack{}, meta, err
-	})
-}
+type ack = struct{}
 
 // callAdmin runs a call to the admin API off the event loop and delivers its
 // answer as a done[T], exactly as call does. The admin API bills nothing, so

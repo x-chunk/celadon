@@ -124,10 +124,11 @@ left of standard input after the passphrase line, or from a hidden prompt.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			codes, meta, err := c.Vault.Store(ctx, teal.VaultStoreRequest{Passphrase: pass, Plaintext: secret})
+			r, err := c.Vault.Store(ctx, teal.VaultStoreRequest{Passphrase: pass, Plaintext: secret}).Value()
 			if err != nil {
 				return err
 			}
+			codes, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(codes, func() error {
 				p.Success("Stored the secret")
@@ -218,10 +219,11 @@ file it is written exactly as it was stored.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			sec, meta, err := c.Vault.Reveal(ctx, teal.VaultRevealRequest{Passphrase: pass})
+			r, err := c.Vault.Reveal(ctx, teal.VaultRevealRequest{Passphrase: pass}).Value()
 			if err != nil {
 				return notFoundAsWrongPass(err)
 			}
+			sec, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(sec, func() error {
 				writePlaintext(env, sec.Plaintext)
@@ -281,14 +283,14 @@ is the current passphrase and the second the new one.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			meta, err := c.Vault.Rename(ctx, teal.VaultRenameRequest{Passphrase: pass, NewPassphrase: next})
+			r, err := c.Vault.Rename(ctx, teal.VaultRenameRequest{Passphrase: pass, NewPassphrase: next}).Value()
 			if err != nil {
 				return notFoundAsWrongPass(err)
 			}
 			p := env.Printer()
 			return p.Result(map[string]bool{"ok": true}, func() error {
 				p.Success("The entry now opens with the new passphrase")
-				p.Meta(meta)
+				p.Meta(r.Meta)
 				return nil
 			})
 		},
@@ -316,10 +318,11 @@ a set may have leaked: the old codes are worthless the moment this returns.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			codes, meta, err := c.Vault.ReissueCodes(ctx, teal.VaultCodesRequest{Passphrase: pass})
+			r, err := c.Vault.ReissueCodes(ctx, teal.VaultCodesRequest{Passphrase: pass}).Value()
 			if err != nil {
 				return notFoundAsWrongPass(err)
 			}
+			codes, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(codes, func() error {
 				p.Success("Issued new recovery codes; the old ones no longer work")
@@ -367,13 +370,14 @@ With --code-stdin, the first line of standard input is the code and, with
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			rec, meta, err := c.Vault.Recover(ctx, req)
+			r, err := c.Vault.Recover(ctx, req).Value()
 			if err != nil {
 				if teal.IsCode(err, teal.CodeNotFound) {
 					return errors.New("that code opens nothing: it is wrong, or it has already been spent")
 				}
 				return err
 			}
+			rec, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(rec, func() error {
 				if rec.Rekeyed {
@@ -435,19 +439,20 @@ Deleting is free on every billing mode.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			var meta *teal.Meta
+			var res reply[struct{}]
 			if entryID > 0 {
-				meta, err = c.Vault.DeleteByID(ctx, entryID)
+				res = c.Vault.DeleteByID(ctx, entryID)
 			} else {
-				meta, err = c.Vault.Delete(ctx, teal.VaultDeleteRequest{Passphrase: pass})
+				res = c.Vault.Delete(ctx, teal.VaultDeleteRequest{Passphrase: pass})
 			}
+			r, err := res.Value()
 			if err != nil {
 				return notFoundAsWrongPass(err)
 			}
 			p := env.Printer()
 			return p.Result(map[string]bool{"ok": true}, func() error {
 				p.Success("Destroyed the entry")
-				p.Meta(meta)
+				p.Meta(r.Meta)
 				return nil
 			})
 		},

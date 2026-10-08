@@ -12,7 +12,8 @@ require (
 	github.com/muesli/termenv v0.16.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	go.xchunk.org/teal v0.3.0
+	go.xchunk.org/anvil/v2 v2.1.0
+	go.xchunk.org/teal v0.4.0
 	golang.org/x/term v0.46.0
 )
 

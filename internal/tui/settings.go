@@ -74,16 +74,16 @@ func (t *settingsTab) load() tea.Cmd {
 	seq := t.seq
 	t.err = nil
 	return tea.Batch(
-		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) (teal.Retention, *teal.Meta, error) {
+		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) reply[teal.Retention] {
 			return c.Settings.Retention(ctx)
 		}),
-		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) (teal.VaultSettings, *teal.Meta, error) {
+		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) reply[teal.VaultSettings] {
 			return c.Settings.Vault(ctx)
 		}),
-		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) (teal.ActionSettings, *teal.Meta, error) {
+		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) reply[teal.ActionSettings] {
 			return c.Settings.Actions(ctx)
 		}),
-		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) (teal.Language, *teal.Meta, error) {
+		call(t.be, "settings", seq, func(ctx context.Context, c *teal.Client) reply[teal.Language] {
 			return c.Settings.Language(ctx)
 		}),
 	)
@@ -196,7 +196,7 @@ func (t *settingsTab) change(row settingRow, dir int) tea.Cmd {
 		}
 		i := indexOf(actionPrefixes, t.actions.Prefix)
 		next := actionPrefixes[(i+dir+len(actionPrefixes))%len(actionPrefixes)]
-		return save(t, func(ctx context.Context, c *teal.Client) (teal.ActionSettings, *teal.Meta, error) {
+		return save(t, func(ctx context.Context, c *teal.Client) reply[teal.ActionSettings] {
 			return c.Settings.UpdateActions(ctx, teal.ActionSettingsUpdateRequest{Prefix: next})
 		})
 	case rowLanguage:
@@ -210,7 +210,7 @@ func (t *settingsTab) change(row settingRow, dir int) tea.Cmd {
 		options := append([]string{""}, t.language.Supported...)
 		i := indexOf(options, t.language.Chosen)
 		next := options[(i+dir+len(options))%len(options)]
-		return save(t, func(ctx context.Context, c *teal.Client) (teal.Language, *teal.Meta, error) {
+		return save(t, func(ctx context.Context, c *teal.Client) reply[teal.Language] {
 			return c.Settings.UpdateLanguage(ctx, teal.LanguageUpdateRequest{Language: next})
 		})
 	case rowTTL, rowRevealTTL:
@@ -251,7 +251,7 @@ func (t *settingsTab) saveTyped(row settingRow, value string) tea.Cmd {
 				return nil
 			}
 		}
-		return save(t, func(ctx context.Context, c *teal.Client) (teal.VaultSettings, *teal.Meta, error) {
+		return save(t, func(ctx context.Context, c *teal.Client) reply[teal.VaultSettings] {
 			return c.Settings.UpdateVault(ctx, teal.VaultSettingsUpdateRequest{RevealTTLSeconds: int(secs)})
 		})
 	}
@@ -259,13 +259,13 @@ func (t *settingsTab) saveTyped(row settingRow, value string) tea.Cmd {
 }
 
 func (t *settingsTab) saveRetention(req teal.RetentionUpdateRequest) tea.Cmd {
-	return save(t, func(ctx context.Context, c *teal.Client) (teal.Retention, *teal.Meta, error) {
+	return save(t, func(ctx context.Context, c *teal.Client) reply[teal.Retention] {
 		return c.Settings.UpdateRetention(ctx, req)
 	})
 }
 
 // save writes one setting and takes back what is in force after it.
-func save[T any](t *settingsTab, fn func(context.Context, *teal.Client) (T, *teal.Meta, error)) tea.Cmd {
+func save[T any](t *settingsTab, fn func(context.Context, *teal.Client) reply[T]) tea.Cmd {
 	t.saving = true
 	return call(t.be, "settings-save", 0, fn)
 }

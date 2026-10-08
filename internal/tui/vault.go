@@ -309,32 +309,32 @@ func (t *vaultTab) run() tea.Cmd {
 	seq := t.seq
 	switch t.menu.pos {
 	case opStore:
-		return call(t.be, "vault-store", seq, func(ctx context.Context, c *teal.Client) (teal.RecoveryCodes, *teal.Meta, error) {
+		return call(t.be, "vault-store", seq, func(ctx context.Context, c *teal.Client) reply[teal.RecoveryCodes] {
 			return c.Vault.Store(ctx, teal.VaultStoreRequest{Passphrase: v[0], Plaintext: v[2]})
 		})
 	case opReveal:
-		return call(t.be, "vault-reveal", seq, func(ctx context.Context, c *teal.Client) (teal.VaultSecret, *teal.Meta, error) {
+		return call(t.be, "vault-reveal", seq, func(ctx context.Context, c *teal.Client) reply[teal.VaultSecret] {
 			return c.Vault.Reveal(ctx, teal.VaultRevealRequest{Passphrase: v[0]})
 		})
 	case opRename:
-		return callAck(t.be, "vault-rename", seq, func(ctx context.Context, c *teal.Client) (*teal.Meta, error) {
+		return call(t.be, "vault-rename", seq, func(ctx context.Context, c *teal.Client) reply[ack] {
 			return c.Vault.Rename(ctx, teal.VaultRenameRequest{Passphrase: v[0], NewPassphrase: v[1]})
 		})
 	case opCodes:
-		return call(t.be, "vault-codes", seq, func(ctx context.Context, c *teal.Client) (teal.RecoveryCodes, *teal.Meta, error) {
+		return call(t.be, "vault-codes", seq, func(ctx context.Context, c *teal.Client) reply[teal.RecoveryCodes] {
 			return c.Vault.ReissueCodes(ctx, teal.VaultCodesRequest{Passphrase: v[0]})
 		})
 	case opRecover:
-		return call(t.be, "vault-recover", seq, func(ctx context.Context, c *teal.Client) (teal.VaultRecovered, *teal.Meta, error) {
+		return call(t.be, "vault-recover", seq, func(ctx context.Context, c *teal.Client) reply[teal.VaultRecovered] {
 			return c.Vault.Recover(ctx, teal.VaultRecoverRequest{Code: strings.TrimSpace(v[0]), NewPassphrase: v[1]})
 		})
 	case opDelete:
-		return callAck(t.be, "vault-delete", seq, func(ctx context.Context, c *teal.Client) (*teal.Meta, error) {
+		return call(t.be, "vault-delete", seq, func(ctx context.Context, c *teal.Client) reply[ack] {
 			return c.Vault.Delete(ctx, teal.VaultDeleteRequest{Passphrase: v[0]})
 		})
 	case opDeleteID:
 		id, _ := strconv.ParseInt(strings.TrimSpace(v[0]), 10, 64)
-		return callAck(t.be, "vault-delete", seq, func(ctx context.Context, c *teal.Client) (*teal.Meta, error) {
+		return call(t.be, "vault-delete", seq, func(ctx context.Context, c *teal.Client) reply[ack] {
 			return c.Vault.DeleteByID(ctx, id)
 		})
 	}

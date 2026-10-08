@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.xchunk.org/anvil/v2/result"
 	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/admin"
@@ -104,6 +105,10 @@ func (e *Env) Resolve() (config.Resolved, error) {
 	}
 	return s.Resolve(e.Overrides(), teal.DefaultBaseURL)
 }
+
+// reply is what every teal method answers with: the payload and the Meta it
+// came with, or the refusal.
+type reply[T any] = result.Result[teal.Response[T]]
 
 // Client builds a client for the profile in use. A missing key is an
 // authentication problem, and is reported as one.

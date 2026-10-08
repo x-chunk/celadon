@@ -40,12 +40,12 @@ func TestNewSendsTheKeyTheWayTheProfileSays(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			app, _, err := c.App.Get(context.Background())
+			r, err := c.App.Get(context.Background()).Value()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if app.Name != "Reports" {
-				t.Errorf("app = %+v", app)
+			if r.Data.Name != "Reports" {
+				t.Errorf("app = %+v", r.Data)
 			}
 		})
 	}
@@ -81,7 +81,7 @@ func TestExplainANetworkFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = c.App.Get(context.Background())
+	err = c.App.Get(context.Background()).Error()
 	p := Explain(err, time.Now())
 	if !strings.Contains(p.Title, "could not reach the API") || !strings.Contains(p.Hint, "auth status") {
 		t.Errorf("Explain = %+v", p)

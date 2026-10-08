@@ -25,10 +25,11 @@ func newInsightsCmd(env *Env) *cobra.Command {
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			in, meta, err := c.Insights.Get(ctx)
+			r, err := c.Insights.Get(ctx).Value()
 			if err != nil {
 				return err
 			}
+			in, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(in, func() error {
 				if len(in.Insights) == 0 {
@@ -76,14 +77,14 @@ A group's chat id is negative; put -- before it, so it is not read as a flag.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			pt, meta, err := fetchPortrait(ctx, env, c, chat, wait)
+			r, err := fetchPortrait(ctx, env, c, chat, wait)
 			if err != nil {
 				return err
 			}
 			p := env.Printer()
-			return p.Result(pt, func() error {
-				printPortrait(env, pt)
-				p.Meta(meta)
+			return p.Result(r.Data, func() error {
+				printPortrait(env, r.Data)
+				p.Meta(r.Meta)
 				return nil
 			})
 		},
@@ -92,15 +93,15 @@ A group's chat id is negative; put -- before it, so it is not read as a flag.`,
 	return cmd
 }
 
-func fetchPortrait(ctx context.Context, env *Env, c *teal.Client, chat int64, wait bool) (teal.Portrait, *teal.Meta, error) {
+func fetchPortrait(ctx context.Context, env *Env, c *teal.Client, chat int64, wait bool) (teal.Response[teal.Portrait], error) {
 	for {
-		pt, meta, err := c.Insights.Portrait(ctx, chat)
+		r, err := c.Insights.Portrait(ctx, chat).Value()
 		e, ok := teal.AsError(err)
 		if !ok || e.Code != teal.CodeNotFound || e.RetryAfter <= 0 {
-			return pt, meta, err
+			return r, err
 		}
 		if !wait {
-			return pt, meta, fmt.Errorf("the portrait is still being built: try again in %s, or pass --wait", output.Duration(e.RetryAfter))
+			return r, fmt.Errorf("the portrait is still being built: try again in %s, or pass --wait", output.Duration(e.RetryAfter))
 		}
 		d := min(e.RetryAfter, portraitPoll)
 		env.Printer().Info("The portrait is being built; asking again in %s…", output.Duration(d))
@@ -108,7 +109,7 @@ func fetchPortrait(ctx context.Context, env *Env, c *teal.Client, chat int64, wa
 		select {
 		case <-ctx.Done():
 			t.Stop()
-			return pt, meta, ctx.Err()
+			return r, ctx.Err()
 		case <-t.C:
 		}
 	}

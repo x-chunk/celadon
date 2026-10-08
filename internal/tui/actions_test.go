@@ -75,6 +75,17 @@ func TestErrorsReachTheStatusLine(t *testing.T) {
 	d.wantView("invalid api key", "celadon auth login")
 }
 
+func TestARefusalKeepsTheBalanceCurrent(t *testing.T) {
+	d := newDriver(t)
+	d.api.on("GET", "/v1/actions", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Aether-Billing", "credits")
+		w.Header().Set("X-Aether-Balance", "1500")
+		refuse(w, http.StatusPaymentRequired, "insufficient_credits", "the balance cannot cover this")
+	})
+	d.open("Actions")
+	d.wantView("balance $0.0015", "the balance cannot cover this")
+}
+
 func TestASuccessClearsTheLastFailure(t *testing.T) {
 	d := newDriver(t)
 	d.api.on("GET", "/v1/actions", func(w http.ResponseWriter, _ *http.Request) {

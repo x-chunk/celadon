@@ -423,7 +423,7 @@ func newVersionCmd(env *Env) *cobra.Command {
 		RunE: func(*cobra.Command, []string) error {
 			info := version.Get()
 			return env.Printer().Result(map[string]string{
-				"version": info.Version, "commit": info.Commit, "date": info.Date, "go": info.Go,
+				"version": info.Version, "commit": info.Commit, "date": info.Date, "go": info.Go, "teal": info.Teal,
 			}, func() error {
 				env.Printer().Println(info.String())
 				return nil

@@ -98,3 +98,20 @@ func TestVaultRenameRecoverAndDelete(t *testing.T) {
 		t.Errorf("delete by id went to %s %s", h.api.last().Method, h.api.last().Path)
 	}
 }
+
+func TestVaultExplainsALockedVaultAndDoesNotRetryIt(t *testing.T) {
+	h := newHarness(t).loggedIn()
+	h.api.on("POST", "/v1/vault/entries/reveal", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "900")
+		refuseWith(w, http.StatusTooManyRequests, map[string]any{
+			"code": "rate_limited", "reason": "vault_locked", "message": "the vault is locked",
+		})
+	})
+	r := h.run("guess\n", "--retries", "2", "vault", "reveal", "--passphrase-stdin").wantCode(t, ExitError)
+	if !strings.Contains(r.stderr, "shut to guesses for 15m0s") {
+		t.Errorf("stderr = %q", r.stderr)
+	}
+	if h.api.calls() != 1 {
+		t.Errorf("a locked vault was asked %d times", h.api.calls())
+	}
+}

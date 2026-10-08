@@ -361,9 +361,11 @@ func report(env *Env, err error) int {
 	if p.Auth {
 		code = ExitAuth
 	}
+	// Both may carry what the API said — a plan's name, a permission's key —
+	// and the API's word is not trusted with the terminal.
 	fmt.Fprintf(env.IO.Err, "error: %s\n", output.Sanitize(p.Title))
 	if p.Hint != "" {
-		fmt.Fprintf(env.IO.Err, "hint: %s\n", p.Hint)
+		fmt.Fprintf(env.IO.Err, "hint: %s\n", output.Sanitize(p.Hint))
 	}
 	if code == ExitUsage {
 		fmt.Fprintln(env.IO.Err, "run with --help for usage")

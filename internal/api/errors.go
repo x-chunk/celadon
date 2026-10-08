@@ -76,10 +76,23 @@ func Explain(err error, now time.Time) Problem {
 			p.Hint += " (balance " + e.Meta.Balance.String() + ")"
 		}
 	case teal.CodeForbidden:
-		p.Hint = "the account's plan does not open this; the Plug-In needs Ultra"
+		p.Hint = forbiddenHint(e)
+	case teal.CodeScopeRequired:
+		p.Hint = scopeHint(e.Scope)
 	case teal.CodeAccountBlocked:
 		p.Auth = true
 		p.Hint = "the account behind this key is blocked"
+	case teal.CodeNotFound:
+		switch e.Reason {
+		case teal.ReasonNotEnoughHistory:
+			p.Hint = "the chat is too short to portray yet; it has to grow first"
+		case teal.ReasonEmptyChat:
+			p.Hint = "the other side of this chat has never written, so there is nobody to portray"
+		}
+	case teal.CodeMethodNotAllowed:
+		p.Hint = "the deployment does not serve this call: it may run another version of the API, or the base url may point elsewhere (`celadon auth status`)"
+	case teal.CodeTooLarge:
+		p.Hint = "an export is capped at 50 MB and this one would pass it, so nothing was sent or charged; narrow it with --chat or a filter such as --where created~2026-09, and export the rest separately"
 	case teal.CodeQuotaExhausted:
 		if e.Limit != "" {
 			p.Title = fmt.Sprintf("quota %s is used up (%d of %d)", e.Limit, e.Used, e.LimitValue)
@@ -88,15 +101,68 @@ func Explain(err error, now time.Time) Problem {
 			p.Hint = "it resets " + e.ResetAt.Local().Format("2006-01-02 15:04") + " (in " + e.ResetAt.Sub(now).Round(time.Minute).String() + ")"
 		}
 	case teal.CodeRateLimited:
-		if e.RetryAfter > 0 {
+		switch {
+		case e.Reason == teal.ReasonVaultLocked:
+			p.Hint = "too many wrong passphrases and codes were tried, so the vault is shut to guesses" + later(e.RetryAfter, "for ") +
+				"; its owner has been told in Telegram"
+		case e.RetryAfter > 0:
 			p.Hint = "slow down; retry in " + e.RetryAfter.String()
 		}
+	case teal.CodeBusy:
+		p.Hint = "the API had no room for the request and did none of it; try again" + later(e.RetryAfter, "in ")
 	case teal.CodeUnavailable:
-		p.Hint = "the Plug-In API is not enabled on this deployment"
+		switch e.Reason {
+		case teal.ReasonModelTraining:
+			p.Hint = "the portrait's model is still being fitted; ask again" + later(e.RetryAfter, "in ")
+		case teal.ReasonPortraitsDisabled:
+			p.Hint = "portraits are switched off on this deployment; waiting does not help"
+		case teal.ReasonNotConfigured:
+			p.Hint = "the Plug-In API is not enabled on this deployment"
+		default:
+			p.Hint = "the deployment cannot serve this as things stand; the Plug-In API may not be enabled on it"
+		}
 	case teal.CodeInternal:
 		p.Hint = "the server failed; if it keeps happening, report it with the time of the request"
 	}
 	return p
+}
+
+// forbiddenHint says what the account's plan does not open and, when there is
+// one to upgrade to, which plan does.
+func forbiddenHint(e *teal.Error) string {
+	what := "this"
+	if e.Permission != "" {
+		what = e.Permission
+	}
+	if e.RequiredPlan != "" {
+		return fmt.Sprintf("the account's plan does not open %s; %s does — upgrade in the bot", what, e.RequiredPlan)
+	}
+	return fmt.Sprintf("the account's plan does not open %s", what)
+}
+
+// scopeHint says what a key that may only read was asked to do, and where its
+// owner opens that to it. Nothing a request carries opens a scope.
+func scopeHint(scope string) string {
+	what := "this"
+	switch scope {
+	case teal.ScopeSettingsWrite:
+		what = "changing the account's settings (" + scope + ")"
+	case teal.ScopeVaultWrite:
+		what = "writing to the vault (" + scope + ")"
+	case "":
+	default:
+		what = scope
+	}
+	return "the key's owner has not opened " + what + " to this key; it is opened on the application's screen in the bot"
+}
+
+// later is when to come back, after a lead-in, when the API said; empty when
+// it did not.
+func later(d time.Duration, lead string) string {
+	if d <= 0 {
+		return ""
+	}
+	return " " + lead + d.Round(time.Second).String()
 }
 
 // explainAdmin explains a refusal of the admin API. Its message is written

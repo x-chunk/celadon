@@ -84,9 +84,15 @@ func answer(w http.ResponseWriter, data any) {
 }
 
 func refuse(w http.ResponseWriter, status int, code, message string) {
+	refuseWith(w, status, map[string]any{"code": code, "message": message})
+}
+
+// refuseWith answers with a refusal whose error object is fields: the code,
+// the message and whatever else the refusal carries.
+func refuseWith(w http.ResponseWriter, status int, fields map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": map[string]any{"code": code, "message": message}})
+	json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": fields})
 }
 
 // run is one invocation of the command line.

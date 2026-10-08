@@ -93,7 +93,8 @@ The header shows whether the process is ready, whichever tab is open.
 
 ## From Go
 
-Inside celadon the client is `internal/metrics`, shaped like teal:
+Inside celadon the client is `internal/metrics`, on teal's pattern and
+answering in `(payload, *Meta, error)`:
 
 ```go
 c, err := metrics.New(metrics.WithBaseURL("http://127.0.0.1:9090"), metrics.WithToken(token))

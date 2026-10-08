@@ -2,16 +2,19 @@
 
 One binary, `cmd/celadon`, with two faces over one client: a cobra command
 line and a Bubble Tea interface. Neither talks HTTP itself — every call is a
-[teal](https://github.com/x-chunk/teal) method, and teal owns the wire format,
-retries and error decoding.
+[teal](https://docs.xchunk.org/teal/docs) (`go.xchunk.org/teal`) method, and
+teal owns the wire format, retries and error decoding. Every teal method
+answers with a `result.Result` (`go.xchunk.org/anvil/v2/result`) of a
+`teal.Response`: the payload in `Data` and what it cost in `Meta`, or the
+refusal, which carries its own `Meta`.
 
 ```text
 cmd/celadon         main: signals, streams, wiring the TUI into the CLI
 cmd/gendocs         man pages and completion scripts, for packaging
 internal/
 ├── version         the build's version, from -ldflags or the module info
-├── admin           a teal-shaped client for the private admin API (/admin/promo)
-├── metrics         a teal-shaped client for the metrics listener (health through /api)
+├── admin           a client for the private admin API (/admin/promo), on teal's pattern
+├── metrics         a client for the metrics listener (health through /api), on teal's pattern
 ├── config          ~/.celadon: profiles, key and token files, resolution order
 ├── iostreams       stdin/stdout/stderr, TTY detection, hidden prompts
 ├── output          tables, JSON, sanitizing, formatting money, time and readings; sparklines
@@ -28,10 +31,11 @@ the command line testable without a terminal.
 ## The admin client
 
 `internal/admin` is to Aether's private admin API what teal is to the Plug-In
-API, and is written to be called the same way: a `Client` built from a token
-and options, services hanging off it (`Promo`), one request type per call with
-pointers for optional fields, generic `get`/`post`/`patch`/`del` helpers over
-`Do[T]`, and every method returning `(payload, *Meta, error)`.
+API, and is written on the same pattern: a `Client` built from a token and
+options, services hanging off it (`Promo`), one request type per call with
+pointers for optional fields, and generic `get`/`post`/`patch`/`del` helpers
+over `Do[T]`. Its methods return `(payload, *Meta, error)` — the shape teal
+answered in before v0.4, which now wraps the same three in a `result.Result`.
 
 What differs is the API underneath. It is opened by the deployment's
 `ADMIN_TOKEN`, bills nothing, and answers in `{ok, message, data}` with the
@@ -61,13 +65,15 @@ tunnel.
 flags and the seams a test replaces (config directory, HTTP client, clock).
 Every command follows the same shape: validate the arguments before anything
 is sent (a malformed filter is never billed), build the client, call teal
-under `Env.Context` (the `--timeout`), and hand the result to
-`Printer.Result`, which writes JSON or calls the command's text renderer.
+under `Env.Context` (the `--timeout`), take its `Result` apart with `Value`, and
+hand the payload to `Printer.Result`, which writes JSON or calls the command's
+text renderer.
 
 Errors are classified once, in `cli.report`: usage errors (bad flags,
 arguments, values) exit 2, authentication problems exit 4, everything else
 exits 1, and `api.Explain` turns a teal `*Error` into a title and a hint by its
-error code — never by its message, as teal asks.
+error code and reason — never by its message, as teal asks. A hint may carry
+what the refusal named (a plan, a scope), so it is sanitized like the title.
 
 ## Terminal interface
 
@@ -75,8 +81,10 @@ error code — never by its message, as teal asks.
 keys. Each tab implements a small interface (`init`, `update`, `view`,
 `capturing`, `keys`); tabs are pointers and change in place.
 
-Calls run as `tea.Cmd`s through `call[T]`, which delivers a `done[T]` carrying
-the payload, the `*teal.Meta` and the error. Every tab stamps its calls with a
+Calls run as `tea.Cmd`s through `call[T]`, which takes a teal `Result` apart
+and delivers a `done[T]` carrying the payload, the `*teal.Meta` — a refusal's
+own, from `Error.Meta`, so a refused call keeps the balance current too — and
+the error. Every tab stamps its calls with a
 sequence number and drops an answer that is not the latest. The root sees
 every `done` through the `outcome` interface to keep the balance and the status
 line current, then broadcasts it to all tabs — a tab left while its call was in

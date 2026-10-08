@@ -193,8 +193,10 @@ arrived.
 
 ## From Go
 
-Inside celadon the client is `internal/admin`, shaped like
-[teal](https://github.com/x-chunk/teal):
+Inside celadon the client is `internal/admin`, on the pattern of
+[teal](https://docs.xchunk.org/teal/docs) — one request type per call, a
+service per part of the API — and answering in `(payload, *Meta, error)`, the
+shape teal had before it wrapped those in a `result.Result`:
 
 ```go
 c, err := admin.New(token, admin.WithBaseURL("https://aether.example.com"))

@@ -25,7 +25,7 @@ Everything celadon keeps is under one directory: `~/.celadon`, or
 default_profile = "work"
 
 [profiles.default]
-base_url = "http://144.31.187.78:8080"
+base_url = "https://aether.xchunk.org"
 app_id = 7
 app_name = "Reports"
 key_prefix = "aek_AbCdEfGh"
@@ -87,7 +87,7 @@ Highest precedence first:
 | Setting  | Sources |
 |----------|---------|
 | profile  | `--profile`, `$CELADON_PROFILE`, `default_profile`, `default` |
-| base URL | `--base-url`, `$CELADON_BASE_URL`, the profile's `base_url`, the built-in default |
+| base URL | `--base-url`, `$CELADON_BASE_URL`, the profile's `base_url`, the built-in default — teal's, `https://aether.xchunk.org` |
 | key      | `$CELADON_API_KEY`, `keys/<profile>` |
 | admin API | `--base-url`, `$CELADON_ADMIN_BASE_URL`, the profile's `admin_base_url`, then the base URL as above |
 | admin token | `$CELADON_ADMIN_TOKEN`, `admin/<profile>` |

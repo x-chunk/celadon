@@ -1,6 +1,7 @@
 // Package metrics is a Go client for Aether's metrics listener — the API the
-// embedded dashboard is drawn from — written to be called the way teal calls
-// the Plug-In API:
+// embedded dashboard is drawn from — written on teal's pattern for the
+// Plug-In API, in the (payload, *Meta, error) shape teal answered in before
+// it wrapped those in a result.Result:
 //
 //	c, err := metrics.New(metrics.WithBaseURL("http://127.0.0.1:9090"), metrics.WithToken(token))
 //	if err != nil {

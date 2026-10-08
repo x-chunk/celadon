@@ -1,6 +1,7 @@
 // Package admin is a Go client for Aether's private admin API — for now the
-// promotions API under /admin/promo — written to be called exactly the way
-// teal calls the public one:
+// promotions API under /admin/promo — written on teal's pattern for the
+// public one, in the (payload, *Meta, error) shape teal answered in before it
+// wrapped those in a result.Result:
 //
 //	c, err := admin.New(token, admin.WithBaseURL("https://your-aether-host"))
 //	if err != nil {

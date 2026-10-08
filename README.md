@@ -1,10 +1,10 @@
 # celadon
 
 A command line and a full-screen terminal interface for the
-[Aether Plug-In API](http://144.31.187.78:8080/docs): the archive, the vault,
+[Aether Plug-In API](https://aether.xchunk.org/docs): the archive, the vault,
 the shortcuts and the settings of the account an application key opens.
-Every call goes through [teal](https://github.com/x-chunk/teal), the Go client
-for the API.
+Every call goes through [teal](https://docs.xchunk.org/teal/docs)
+(`go.xchunk.org/teal`), the Go client for the API.
 
 ```text
 $ celadon search invoice --where suser=ann
@@ -202,8 +202,11 @@ what the last call cost. See [docs/tui.md](docs/tui.md).
 - `CELADON_API_KEY` and `CELADON_BASE_URL` configure a run without any file
   on disk, which is what a CI job wants.
 - `--timeout` bounds a command (default one minute; `export` is unbounded
-  unless it is set), and `--retries` sets how often a rate refusal or a failed
-  read is retried. Writes are never retried after a server failure.
+  unless it is set), and `--retries` sets how often a call is sent again when
+  doing so cannot do anything twice: after a rate refusal or an API too busy to
+  start it, whatever the call, and after a failure on the server's side for a
+  read. Writes are never retried after a server failure, and a spent quota, a
+  locked vault or a deployment that cannot serve the call never are.
 
 ```sh
 celadon search --where media=photo -o json -q | jq '.messages[].id'

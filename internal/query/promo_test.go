@@ -41,7 +41,7 @@ func TestParseBonus(t *testing.T) {
 			t.Errorf("ParseBonus(%q) = %+v, %v", in, got, err)
 		}
 	}
-	for _, bad := range []string{"50", "x:20", "-5:20", "1.234:5", "50:0", "0:5"} {
+	for _, bad := range []string{"50", "x:20", "-5:20", "1.234:5", "50:0", "0:5", "nan:5", "1e17:5", "1e307:5"} {
 		if _, err := ParseBonus(bad); err == nil {
 			t.Errorf("%q was accepted", bad)
 		}
@@ -114,7 +114,7 @@ func TestParseMoment(t *testing.T) {
 			t.Errorf("ParseMoment(%q) = %v, %v; want %v", in, got, err, want)
 		}
 	}
-	for _, bad := range []string{"tomorrow", "+soon", "+0", "2026-13-01"} {
+	for _, bad := range []string{"tomorrow", "+soon", "+0", "2026-13-01", "+nand", "+9999999999999"} {
 		if _, err := ParseMoment(bad, now); err == nil {
 			t.Errorf("%q was accepted", bad)
 		}

@@ -418,6 +418,9 @@ func dollars(s string) (int64, error) {
 	if math.Abs(f*100-cents) > 1e-6 {
 		return 0, errors.New("the amount has more than two decimals")
 	}
+	if cents > math.MaxInt64/2 {
+		return 0, errors.New("the amount is too large")
+	}
 	return int64(cents), nil
 }
 

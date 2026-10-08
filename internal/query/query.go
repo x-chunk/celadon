@@ -5,6 +5,7 @@ package query
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -140,6 +141,10 @@ func split(line string) ([]string, error) {
 	return tokens, nil
 }
 
+// MaxSeconds is the longest span Seconds reads: the longest a time.Duration
+// holds, about 292 years, so whatever it reads can become one.
+const MaxSeconds = int64(math.MaxInt64 / time.Second)
+
 // Seconds reads a span of time for a setting: a Go duration ("90s", "36h"),
 // a count of days ("7d"), a bare count of seconds, or "off"/"0".
 func Seconds(s string) (int64, error) {
@@ -148,18 +153,32 @@ func Seconds(s string) (int64, error) {
 	case "", "0", "off", "none":
 		return 0, nil
 	}
+	tooLong := fmt.Errorf("invalid duration %q: the longest is 292 years", s)
 	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
 		if n < 0 {
 			return 0, fmt.Errorf("invalid duration %q: it cannot be negative", s)
+		}
+		if n > MaxSeconds {
+			return 0, tooLong
 		}
 		return n, nil
 	}
 	if days, ok := strings.CutSuffix(s, "d"); ok {
 		n, err := strconv.ParseFloat(days, 64)
-		if err != nil || n < 0 {
+		// ParseFloat reads "nan" and "inf" too: NaN fails the comparison,
+		// and infinity is too long below.
+		if err != nil || !(n >= 0) {
 			return 0, fmt.Errorf("invalid duration %q", s)
 		}
-		return int64(n * 24 * 3600), nil
+		secs := n * 24 * 3600
+		if secs > float64(MaxSeconds) {
+			return 0, tooLong
+		}
+		whole := math.Round(secs)
+		if math.Abs(secs-whole) > 1e-6 {
+			return 0, fmt.Errorf("invalid duration %q: the API counts whole seconds", s)
+		}
+		return int64(whole), nil
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d < 0 {

@@ -76,6 +76,7 @@ func TestCombine(t *testing.T) {
 func TestSeconds(t *testing.T) {
 	cases := map[string]int64{
 		"off": 0, "0": 0, "": 0, "90": 90, "90s": 90, "5m": 300, "12h": 43200, "7d": 604800, "1.5d": 129600,
+		"0.1d": 8640, "9223372036": MaxSeconds, "106751d": 106751 * 86400,
 	}
 	for in, want := range cases {
 		got, err := Seconds(in)
@@ -83,9 +84,13 @@ func TestSeconds(t *testing.T) {
 			t.Errorf("Seconds(%q) = %d, %v; want %d", in, got, err, want)
 		}
 	}
-	for _, bad := range []string{"-5", "soon", "1.5s", "-1d", "-1h"} {
-		if _, err := Seconds(bad); err == nil {
-			t.Errorf("%q was accepted", bad)
+	for _, bad := range []string{
+		"-5", "soon", "1.5s", "-1d", "-1h",
+		// ParseFloat reads these, and none is a span.
+		"nand", "infd", "-infd", "1e300d", "9223372037", "106752d", "0.00001d",
+	} {
+		if n, err := Seconds(bad); err == nil {
+			t.Errorf("%q was accepted as %d", bad, n)
 		}
 	}
 }

@@ -2,6 +2,7 @@ package output
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -107,6 +108,11 @@ func Unix(u teal.Unix) string {
 func Seconds(n int64) string {
 	if n <= 0 {
 		return "off"
+	}
+	// Past what a Duration holds, about 292 years, the span is counted in
+	// days rather than wrapped around to a negative one.
+	if n > math.MaxInt64/int64(time.Second) {
+		return strconv.FormatInt(n/86400, 10) + "d"
 	}
 	return Duration(time.Duration(n) * time.Second)
 }

@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,9 @@ func TestDuration(t *testing.T) {
 	}
 	if Seconds(0) != "off" {
 		t.Error("zero seconds is not off")
+	}
+	if got := Seconds(math.MaxInt64); got != "106751991167300d" {
+		t.Errorf("Seconds(MaxInt64) = %q", got)
 	}
 }
 

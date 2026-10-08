@@ -110,7 +110,9 @@ func bar(used, limit int64, width int) string {
 	if limit <= 0 {
 		return styleFaint.Render(strings.Repeat("·", width))
 	}
-	ratio := min(float64(used)/float64(limit), 1)
+	// Clamped both ways: a count the API got wrong below zero draws an
+	// empty bar rather than a negative one.
+	ratio := min(max(float64(used)/float64(limit), 0), 1)
 	filled := int(ratio * float64(width))
 	style := styleOK
 	switch {

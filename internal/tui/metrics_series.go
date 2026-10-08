@@ -228,7 +228,10 @@ func (t *metricsSeriesTab) listBody(width, height int) string {
 	var b strings.Builder
 	for i := from; i < to; i++ {
 		s := t.visible[i]
-		kind := string(s.Kind)[:1]
+		kind := "·"
+		if r := []rune(output.OneLine(string(s.Kind))); len(r) > 0 {
+			kind = string(r[0])
+		}
 		row := kind + " " + s.Key
 		if i == t.cur.pos {
 			b.WriteString(line(row, width, true) + "\n")

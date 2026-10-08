@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -309,7 +310,13 @@ func portraitView(pt teal.Portrait, width int) string {
 // deviation drawn out to one side, three standard deviations to the edge.
 func zBar(z float64, width int) string {
 	half := width / 2
-	n := min(int(abs(z)/3*float64(half)+0.5), half)
+	// Clamped before it becomes a count: a z far past three — or not a
+	// number at all — fills the side rather than overflowing the int.
+	reach := min(abs(z)/3, 1)
+	if math.IsNaN(reach) {
+		reach = 0
+	}
+	n := int(reach*float64(half) + 0.5)
 	left, right := strings.Repeat(" ", half), strings.Repeat(" ", half)
 	if z < 0 {
 		left = strings.Repeat(" ", half-n) + strings.Repeat("▒", n)

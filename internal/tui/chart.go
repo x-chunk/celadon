@@ -115,7 +115,13 @@ func renderChart(spec chartSpec, width, height int) string {
 		owner[row][col] = series
 	}
 	toY := func(v float64) int {
+		// Clamped, and NaN put at the bottom, before it becomes an int: Go
+		// leaves the conversion of a float out of int range undefined.
 		frac := (v - lo) / (hi - lo)
+		if math.IsNaN(frac) {
+			frac = 0
+		}
+		frac = min(max(frac, 0), 1)
 		return dotsH - 1 - int(math.Round(frac*float64(dotsH-1)))
 	}
 

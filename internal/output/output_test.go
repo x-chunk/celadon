@@ -21,6 +21,9 @@ func TestSanitize(t *testing.T) {
 		"bidi ‮evil‬":           "bidi �evil�",
 		"cr\rover":              "cr�over",
 		"кириллица и emoji 🙂":   "кириллица и emoji 🙂",
+		"raw csi \x9b31m":       "raw csi �31m",
+		"not utf-8 \xff\xfe":    "not utf-8 ��",
+		"a real � stays":        "a real � stays",
 	}
 	for in, want := range cases {
 		if got := Sanitize(in); got != want {
@@ -121,5 +124,25 @@ func TestQuietDropsNotes(t *testing.T) {
 	p.Meta(&teal.Meta{Cost: 1, HasBalance: true})
 	if errOut.Len() != 0 {
 		t.Errorf("quiet wrote %q", errOut.String())
+	}
+}
+
+func TestPrinterSanitizesEveryLine(t *testing.T) {
+	var out, errOut bytes.Buffer
+	p := New(iostreams.Test(nil, &out, &errOut), FormatText, false)
+	evil := "x\x1b]0;pwned\x07\x9by"
+	p.Heading(evil)
+	p.Println("code", evil)
+	p.Info("note %s", evil)
+	p.Success("done %s", evil)
+	p.Warn("careful %s", evil)
+	p.Meta(&teal.Meta{Cost: 1, Billing: teal.BillingMode(evil)})
+	for name, got := range map[string]string{"out": out.String(), "err": errOut.String()} {
+		if strings.ContainsAny(got, "\x1b\x07") || strings.Contains(got, "\x9b") {
+			t.Errorf("%s carries a control: %q", name, got)
+		}
+	}
+	if !strings.Contains(out.String(), "code x�]0;pwned��y\n") || !strings.Contains(errOut.String(), "note x�]0;pwned��y\n") {
+		t.Errorf("out = %q, err = %q", out.String(), errOut.String())
 	}
 }

@@ -320,3 +320,18 @@ func TestPortraitShowsWhoItSoundsLikeAndWhatIsWorthKnowing(t *testing.T) {
 		t.Error("an escape sequence from a chat title reached the terminal")
 	}
 }
+
+func TestPortraitOfAChatWithAHostileTitle(t *testing.T) {
+	h := newHarness(t).loggedIn()
+	h.api.ok("GET", "/v1/portraits/7", map[string]any{
+		"chat_id": 7, "subject": map[string]any{"title": "Ann\x1b]0;pwned\x07\x1b[2J", "username": "ann"},
+		"archetype": map[string]any{"label": "The Essayist"},
+	})
+	r := h.run("", "portrait", "7").wantCode(t, ExitOK)
+	if strings.Contains(r.stdout, "\x1b") || strings.Contains(r.stdout, "\x07") {
+		t.Errorf("a chat title reached the terminal unsanitized: %q", r.stdout)
+	}
+	if !strings.Contains(r.stdout, "Ann�]0;pwned��[2J (@ann)") {
+		t.Errorf("stdout = %q", r.stdout)
+	}
+}

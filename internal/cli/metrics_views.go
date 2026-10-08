@@ -681,7 +681,13 @@ totals rather than rates.`,
 				return p.JSON(out)
 			}
 			if len(args) == 0 {
-				_, err := io.WriteString(env.IO.Out, exp.Raw)
+				// Byte for byte into a pipe or a file, for a scraper; a
+				// terminal gets the help texts sanitized like any other.
+				raw := exp.Raw
+				if env.IO.OutTTY {
+					raw = output.Sanitize(raw)
+				}
+				_, err := io.WriteString(env.IO.Out, raw)
 				return err
 			}
 			rows := make([][]string, 0, len(samples))

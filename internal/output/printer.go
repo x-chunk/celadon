@@ -117,9 +117,10 @@ func (p *Printer) Details(pairs []KV) {
 	}
 }
 
-// Heading writes a section title.
+// Heading writes a section title, sanitized and on one line: a title is as
+// often a chat's or an application's name as celadon's own words.
 func (p *Printer) Heading(s string) {
-	fmt.Fprintln(p.IO.Out, p.out.NewStyle().Bold(true).Render(s))
+	fmt.Fprintln(p.IO.Out, p.out.NewStyle().Bold(true).Render(OneLine(s)))
 }
 
 // Block writes free text — a message, a secret — sanitized but with its
@@ -132,8 +133,10 @@ func (p *Printer) Block(s string) {
 	io.WriteString(p.IO.Out, s)
 }
 
-// Println writes a plain line to the output.
-func (p *Printer) Println(a ...any) { fmt.Fprintln(p.IO.Out, a...) }
+// Println writes a plain line to the output, sanitized. What has to reach
+// the output byte for byte — a revealed secret, the export — does not go
+// through the printer.
+func (p *Printer) Println(a ...any) { io.WriteString(p.IO.Out, Sanitize(fmt.Sprintln(a...))) }
 
 // Success tells the person running the command that it worked. It goes to
 // the error stream, so it never lands in a pipe.
@@ -142,7 +145,7 @@ func (p *Printer) Success(format string, a ...any) {
 		return
 	}
 	mark := p.err.NewStyle().Foreground(lipgloss.Color("2")).Render("✓")
-	fmt.Fprintf(p.IO.Err, "%s %s\n", mark, fmt.Sprintf(format, a...))
+	fmt.Fprintf(p.IO.Err, "%s %s\n", mark, Sanitize(fmt.Sprintf(format, a...)))
 }
 
 // Warn writes a warning to the error stream.
@@ -151,15 +154,17 @@ func (p *Printer) Warn(format string, a ...any) {
 		return
 	}
 	mark := p.err.NewStyle().Foreground(lipgloss.Color("3")).Render("!")
-	fmt.Fprintf(p.IO.Err, "%s %s\n", mark, fmt.Sprintf(format, a...))
+	fmt.Fprintf(p.IO.Err, "%s %s\n", mark, Sanitize(fmt.Sprintf(format, a...)))
 }
 
-// Info writes a note to the error stream.
+// Info writes a note to the error stream. Success, Warn and Info are
+// written with celadon's own words, but what they fill in — a name, an id —
+// may be the API's, so the line is sanitized whole.
 func (p *Printer) Info(format string, a ...any) {
 	if p.Quiet {
 		return
 	}
-	fmt.Fprintf(p.IO.Err, format+"\n", a...)
+	io.WriteString(p.IO.Err, Sanitize(fmt.Sprintf(format, a...))+"\n")
 }
 
 // Meta writes what a request cost to the error stream, when it cost
@@ -188,7 +193,8 @@ func MetaLine(m *teal.Meta) string {
 		parts = append(parts, "balance "+Credits(m.Balance))
 	}
 	if m.Billing != "" {
-		parts = append(parts, string(m.Billing))
+		// The billing mode is a header as the server sent it.
+		parts = append(parts, OneLine(string(m.Billing)))
 	}
 	return strings.Join(parts, " · ")
 }

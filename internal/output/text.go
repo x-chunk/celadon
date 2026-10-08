@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"go.xchunk.org/teal"
@@ -19,19 +20,15 @@ import (
 // emulators, do worse. A Windows line ending becomes a newline, and every
 // other control character but a newline and a tab is replaced with U+FFFD,
 // which is shown for exactly that and is not one. A lone carriage return is
-// replaced too: it is how a line is made to print over itself.
+// replaced too: it is how a line is made to print over itself. So is a byte
+// that is not UTF-8 at all, since a terminal reading bytes may take 0x9b for
+// the start of an escape sequence.
 func Sanitize(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
-	clean := true
-	for _, r := range s {
-		if isHostile(r) || isJoiner(r) {
-			clean = false
-			break
-		}
-	}
-	if clean {
+	if utf8.ValidString(s) && !strings.ContainsFunc(s, func(r rune) bool { return isHostile(r) || isJoiner(r) }) {
 		return s
 	}
+	// Map writes U+FFFD for every byte that is not UTF-8.
 	return strings.Map(func(r rune) rune {
 		switch {
 		case isHostile(r):

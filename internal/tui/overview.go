@@ -187,14 +187,14 @@ func (t *overviewTab) quotaSection(width int) string {
 	now := t.now()
 	keyW := 0
 	for _, q := range t.account.Quotas {
-		keyW = max(keyW, output.Width(q.Key))
+		keyW = max(keyW, output.Width(output.OneLine(q.Key)))
 	}
 	keyW = min(keyW, 28)
 	barW := max(min(width-keyW-36, 30), 8)
 	var b strings.Builder
 	b.WriteString(styleHeading.Render("Quotas") + "\n")
 	for _, q := range t.account.Quotas {
-		key := output.Truncate(q.Key, keyW)
+		key := output.Truncate(output.OneLine(q.Key), keyW)
 		key += strings.Repeat(" ", keyW-output.Width(key))
 		gauge := bar(q.Used, q.Limit, barW)
 		if q.Unlimited {
@@ -202,7 +202,7 @@ func (t *overviewTab) quotaSection(width int) string {
 		}
 		note := ""
 		if q.Window != "" {
-			note = " per " + q.Window
+			note = " per " + output.OneLine(q.Window)
 			if !q.ResetAt.IsZero() {
 				note += ", resets " + output.Until(q.ResetAt, now)
 			}
@@ -215,7 +215,7 @@ func (t *overviewTab) quotaSection(width int) string {
 
 func (t *overviewTab) usageSection(width int) string {
 	u := t.usage
-	head := styleHeading.Render("Spending") + styleMuted.Render(fmt.Sprintf("  %s → %s · %s · %s", u.From, u.To, plural(u.Calls, "call", "calls"), output.Money(u.Credits)))
+	head := styleHeading.Render("Spending") + styleMuted.Render(output.OneLine(fmt.Sprintf("  %s → %s · %s · %s", u.From, u.To, plural(u.Calls, "call", "calls"), output.Money(u.Credits))))
 	if len(u.Ops) == 0 {
 		return head + "\n" + styleMuted.Render("Nothing was billed in the last 30 days.")
 	}
@@ -223,11 +223,12 @@ func (t *overviewTab) usageSection(width int) string {
 	b.WriteString(head + "\n")
 	opW := 0
 	for _, op := range u.Ops {
-		opW = max(opW, output.Width(op.Op))
+		opW = max(opW, output.Width(output.OneLine(op.Op)))
 	}
 	for _, op := range u.Ops {
-		name := op.Op + strings.Repeat(" ", opW-output.Width(op.Op))
-		b.WriteString(output.Truncate(fmt.Sprintf("%s  %8d calls  %s", name, op.Calls, output.Money(op.Credits)), width) + "\n")
+		name := output.OneLine(op.Op)
+		name += strings.Repeat(" ", max(opW-output.Width(name), 0))
+		b.WriteString(output.Truncate(fmt.Sprintf("%s  %8d calls  %s", name, op.Calls, output.OneLine(output.Money(op.Credits))), width) + "\n")
 	}
 	if daily := dailySpend(*u); len(daily) > 1 {
 		label := "per day  "

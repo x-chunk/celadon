@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -71,4 +72,43 @@ func TestDailySpend(t *testing.T) {
 	if dailySpend(teal.Usage{From: "2026-09-25", To: "2026-09-20"}) != nil {
 		t.Error("a window that ends before it starts was drawn")
 	}
+}
+
+func TestTheInterfaceSanitizesWhatTheAPISends(t *testing.T) {
+	d := newDriver(t)
+	const evil = "\x1b]0;pwned\x07\x1b[2J"
+	clean := func(where string) {
+		t.Helper()
+		if v := d.view(); strings.ContainsAny(v, "\x1b\x07") {
+			t.Errorf("%s: a control from the API reached the screen:\n%q", where, v)
+		}
+	}
+	money := func(display string) map[string]any { return map[string]any{"credits": 1, "display": display} }
+	d.api.ok("GET", "/v1/app", map[string]any{"id": 7, "name": "Reports", "billing": "credits" + evil, "balance": money("$1" + evil)})
+	d.api.ok("GET", "/v1/account", map[string]any{
+		"plan":   map[string]any{"tier": "max", "name": "Max"},
+		"quotas": []any{map[string]any{"key": "search:daily" + evil, "limit": 50, "used": 35, "window": "day" + evil}},
+	})
+	d.api.ok("GET", "/v1/usage", map[string]any{
+		"from": "2026-08-26" + evil, "to": "2026-09-25", "calls": 3, "credits": money("$x" + evil),
+		"ops": []any{map[string]any{"op": "search:query" + evil, "calls": 3, "credits": money("$y" + evil)}},
+	})
+	d.keys("r")
+	d.wantView("search:daily", "search:query")
+	clean("overview")
+
+	d.api.on("GET", "/v1/actions", func(w http.ResponseWriter, _ *http.Request) {
+		refuse(w, http.StatusInternalServerError, "internal", "boom"+evil)
+	})
+	d.open("Actions")
+	d.wantView("boom")
+	clean("status line")
+
+	d.api.ok("GET", "/v1/actions", map[string]any{"prefix": "." + evil, "actions": []any{map[string]any{"id": 1, "name": "hi", "body": "Hi"}}, "quota": map[string]any{"limit": 25}})
+	d.api.ok("GET", "/v1/actions/placeholders", []any{map[string]any{"token": "[[X]]" + evil, "level": "basic" + evil, "required_plan": "max" + evil}})
+	d.keys("r")
+	clean("actions")
+	d.keys("p")
+	d.wantView("[[X]]", "needs max")
+	clean("placeholders")
 }

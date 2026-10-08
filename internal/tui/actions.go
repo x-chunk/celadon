@@ -337,7 +337,7 @@ func (t *actionsTab) view(width, height int) string {
 	rightW := width - leftW
 	title := "Shortcuts"
 	if t.list != nil {
-		title += fmt.Sprintf(" · %s · prefix %s", output.Quota(t.list.Quota), t.list.Prefix)
+		title += fmt.Sprintf(" · %s · prefix %s", output.Quota(t.list.Quota), output.OneLine(t.list.Prefix))
 	}
 	left := pane(title, t.listBody(leftW-4, height-3), leftW, height, true)
 	right := pane("Body", t.previewBody(rightW-4, height-3), rightW, height, false)
@@ -417,7 +417,7 @@ func (t *actionsTab) formView(width, height int) string {
 
 	prefix := "."
 	if t.list != nil {
-		prefix = t.list.Prefix
+		prefix = output.OneLine(t.list.Prefix)
 	}
 	var b strings.Builder
 	b.WriteString(styleLabel.Render("Name  ") + prefix + t.name.View() + "\n\n")
@@ -452,15 +452,15 @@ func (t *actionsTab) placeholdersBody(width, height int) string {
 		p := t.placeholders[i]
 		open := styleOK.Render("open")
 		if !p.Allowed {
-			open = styleWarn.Render("needs " + output.Or(p.RequiredPlan))
+			open = styleWarn.Render("needs " + output.OneLine(output.Or(p.RequiredPlan)))
 		}
-		row := fmt.Sprintf("%-18s %-10s %s  %s", p.Token, p.Level, open, styleMuted.Render(output.OneLine(p.Label)))
+		row := fmt.Sprintf("%-18s %-10s %s  %s", output.OneLine(p.Token), output.OneLine(p.Level), open, styleMuted.Render(output.OneLine(p.Label)))
 		if i == t.phCur.pos {
 			row = "› " + row
 		} else {
 			row = "  " + row
 		}
-		b.WriteString(output.Truncate(row, width+20) + "\n")
+		b.WriteString(output.Truncate(row, width) + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

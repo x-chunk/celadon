@@ -119,7 +119,7 @@ func (t *referenceTab) render(width int) string {
 		if !tier.Paid {
 			sold = styleFaint.Render("not sold")
 		}
-		b.WriteString(fmt.Sprintf("%-12s %-16s %8s  %s\n", tier.Tier, output.OneLine(tier.Name), output.Cents(tier.PriceCents), sold))
+		b.WriteString(fmt.Sprintf("%-12s %-16s %8s  %s\n", output.OneLine(tier.Tier), output.OneLine(tier.Name), output.Cents(tier.PriceCents), sold))
 	}
 	b.WriteString("\n" + styleHeading.Render("Quotas") + "\n")
 	keyW := 0
@@ -127,7 +127,7 @@ func (t *referenceTab) render(width int) string {
 		keyW = max(keyW, output.Width(l.Key))
 	}
 	for _, l := range r.Limits {
-		b.WriteString(output.Truncate(fmt.Sprintf("%-*s  %-10s %s", keyW, l.Key, l.Unit, styleMuted.Render(output.OneLine(l.Label))), width+20) + "\n")
+		b.WriteString(output.Truncate(fmt.Sprintf("%-*s  %-10s %s", keyW, output.OneLine(l.Key), output.OneLine(l.Unit), styleMuted.Render(output.OneLine(l.Label))), width) + "\n")
 	}
 	amounts := make([]string, 0, len(r.TopUpAmountsCents))
 	for _, c := range r.TopUpAmountsCents {
@@ -191,7 +191,7 @@ func itemLines(desc, nothing string, width int) string {
 	}
 	var out []string
 	for _, item := range strings.Split(desc, " · ") {
-		out = append(out, output.Truncate("• "+item, width))
+		out = append(out, output.Truncate("• "+output.OneLine(item), width))
 	}
 	return strings.Join(out, "\n")
 }

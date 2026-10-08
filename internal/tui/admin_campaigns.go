@@ -116,7 +116,7 @@ func (t *campaignsTab) update(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 			t.mode, t.form = promoBrowse, nil
-			t.notice = fmt.Sprintf("Saved %q — %s.", msg.val.Name, msg.val.State)
+			t.notice = fmt.Sprintf("Saved %q — %s.", msg.val.Name, output.OneLine(msg.val.State))
 			return t.load()
 		case "campaign-toggle":
 			t.busy = false
@@ -124,7 +124,7 @@ func (t *campaignsTab) update(msg tea.Msg) tea.Cmd {
 				t.err = msg.err
 				return nil
 			}
-			t.notice = fmt.Sprintf("%q is %s.", msg.val.Name, msg.val.State)
+			t.notice = fmt.Sprintf("%q is %s.", msg.val.Name, output.OneLine(msg.val.State))
 			return t.load()
 		}
 	case done[ack]:
@@ -416,7 +416,7 @@ func (t *campaignsTab) listBody(width, height int) string {
 		var b strings.Builder
 		for i := from; i < to; i++ {
 			c := t.list[i]
-			state := fmt.Sprintf("%-9s", c.State)
+			state := fmt.Sprintf("%-9s", output.OneLine(c.State))
 			row := line(fmt.Sprintf("#%-4d %s %s", c.ID, state, c.Name), width, i == t.cur.pos)
 			if i != t.cur.pos {
 				row = fmt.Sprintf("#%-4d %s %s", c.ID, stateStyle(c.State).Render(state), output.Truncate(output.OneLine(c.Name), max(width-16, 4)))

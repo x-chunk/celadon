@@ -204,7 +204,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if d, ok := msg.(done[teal.Application]); ok && d.err == nil {
 		app := d.val
 		m.app = &app
-		m.balance = output.Money(app.Balance)
+		m.balance = output.OneLine(output.Money(app.Balance))
 	}
 
 	// Answers go to every tab: each one knows its own and ignores the rest,
@@ -251,10 +251,12 @@ func (m *Model) noteOutcome(o outcome) {
 		m.balance = meta.Balance.String()
 	}
 	if err := o.errOf(); err != nil {
+		// The title is the API's message, and the hint may name what the
+		// refusal named.
 		p := api.Explain(err, m.now())
-		m.status, m.statusErr = p.Title, true
+		m.status, m.statusErr = output.OneLine(p.Title), true
 		if p.Hint != "" {
-			m.status += " — " + p.Hint
+			m.status += " — " + output.OneLine(p.Hint)
 		}
 		return
 	}
@@ -325,7 +327,7 @@ func (m *Model) header() string {
 	left := styleTitle.Render("celadon")
 	if m.app != nil {
 		left += styleMuted.Render(" · ") + styleHeading.Render(output.OneLine(m.app.Name)) +
-			styleMuted.Render(" · "+string(m.app.Billing))
+			styleMuted.Render(" · "+output.OneLine(string(m.app.Billing)))
 	}
 	left += styleMuted.Render(" · " + m.opts.Profile)
 	right := ""

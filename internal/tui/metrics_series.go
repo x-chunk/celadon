@@ -251,7 +251,7 @@ func (t *metricsSeriesTab) detail(width, height int) string {
 	if s.Kind == metrics.KindCounter {
 		kind += " — drawn as its rate per second"
 	}
-	b.WriteString(styleFaint.Render(output.Truncate(kind+" · "+output.Or(string(s.Unit)), width)) + "\n")
+	b.WriteString(styleFaint.Render(output.Truncate(output.OneLine(kind+" · "+output.Or(string(s.Unit))), width)) + "\n")
 	b.WriteString(rangeBar(t.window) + "\n\n")
 
 	used := lipgloss.Height(b.String())
@@ -280,7 +280,7 @@ func (t *metricsSeriesTab) detail(width, height int) string {
 				return styleLabel.Render(label) + " " + styleHeading.Render(output.MetricValue(v, u))
 			}
 			b.WriteString(stat("min", st.Min) + "   " + stat("avg", st.Avg) + "   " + stat("max", st.Max) + "   " + stat("last", st.Last))
-			b.WriteString("\n" + styleFaint.Render(fmt.Sprintf("%d %s points, one per %s", len(res.Points), t.answer.Tier, output.Duration(t.answer.Step()))))
+			b.WriteString("\n" + styleFaint.Render(fmt.Sprintf("%d %s points, one per %s", len(res.Points), output.OneLine(string(t.answer.Tier)), output.Duration(t.answer.Step()))))
 		} else {
 			b.WriteString(styleMuted.Render("No readings in this window."))
 		}

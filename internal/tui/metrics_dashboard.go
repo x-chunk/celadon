@@ -166,9 +166,9 @@ func (t *metricsDashboardTab) header(width int) string {
 	var parts []string
 	for i, s := range t.info.Layout.Sections {
 		if i == t.section {
-			parts = append(parts, styleTabActive.Render(s.Title))
+			parts = append(parts, styleTabActive.Render(output.OneLine(s.Title)))
 		} else {
-			parts = append(parts, styleTabInactive.Render(s.Title))
+			parts = append(parts, styleTabInactive.Render(output.OneLine(s.Title)))
 		}
 	}
 	sections := output.Truncate(strings.Join(parts, ""), width)
@@ -177,7 +177,7 @@ func (t *metricsDashboardTab) header(width int) string {
 	case t.loading:
 		status = styleFaint.Render("  reading…")
 	case t.answer != nil && t.answer.StepMs > 0:
-		status = styleFaint.Render("  " + string(t.answer.Tier) + " points, one per " + output.Duration(t.answer.Step()))
+		status = styleFaint.Render("  " + output.OneLine(string(t.answer.Tier)) + " points, one per " + output.Duration(t.answer.Step()))
 	}
 	windows := rangeBar(t.window) + status
 	sec := t.info.Layout.Sections[t.section]
@@ -227,7 +227,7 @@ func (t *metricsDashboardTab) panel(p metrics.Panel, width int) string {
 	inner := width - 4
 	lines, more := panelLines(p, *t.info, t.answer, maxPanelLines)
 	var b strings.Builder
-	b.WriteString(styleHeading.Render(output.Truncate(p.Title, inner)))
+	b.WriteString(styleHeading.Render(output.Truncate(output.OneLine(p.Title), inner)))
 	if p.Help != "" {
 		b.WriteString("\n" + styleFaint.Render(output.Truncate(output.OneLine(p.Help), inner)))
 	}

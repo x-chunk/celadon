@@ -237,7 +237,7 @@ func (t *metricsOverviewTab) tileCard(tile metrics.Tile, width int) string {
 		ceiling = 100
 	}
 	shown := valueStyle(value, tile.Unit).Render(output.MetricValue(value, tile.Unit))
-	body := styleMuted.Render(output.Truncate(tile.Title, inner)) + "\n" + shown + "\n" +
+	body := styleMuted.Render(output.Truncate(output.OneLine(tile.Title), inner)) + "\n" + shown + "\n" +
 		styleTitle.Render(output.Sparkline(trail, inner, ceiling))
 	return card(body, width, false)
 }
@@ -271,7 +271,7 @@ func depLine(name, state string, width int) string {
 	default:
 		mark = styleError.Render("✗")
 	}
-	return output.Truncate(mark+" "+fmt.Sprintf("%-14s", name)+" "+styleMuted.Render(output.OneLine(output.Or(state))), width+20)
+	return output.Truncate(mark+" "+fmt.Sprintf("%-14s", output.OneLine(name))+" "+styleMuted.Render(output.OneLine(output.Or(state))), width)
 }
 
 func sortedNames(m map[string]string) []string {

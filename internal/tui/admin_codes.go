@@ -126,7 +126,7 @@ func (t *codesTab) update(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 			t.mode, t.form = promoBrowse, nil
-			t.notice = fmt.Sprintf("Saved %s.", msg.val.Code)
+			t.notice = fmt.Sprintf("Saved %s.", output.OneLine(msg.val.Code))
 			return t.load()
 		case "code-toggle":
 			t.busy = false
@@ -134,7 +134,7 @@ func (t *codesTab) update(msg tea.Msg) tea.Cmd {
 				t.err = msg.err
 				return nil
 			}
-			t.notice = fmt.Sprintf("%s is %s.", msg.val.Code, activeText(msg.val.Active))
+			t.notice = fmt.Sprintf("%s is %s.", output.OneLine(msg.val.Code), activeText(msg.val.Active))
 			return t.load()
 		}
 	case done[ack]:
@@ -394,7 +394,7 @@ func (t *codesTab) listBody(width, height int) string {
 	switch {
 	case t.mode == promoConfirmDelete:
 		c, _ := t.selected()
-		foot = styleWarn.Render(output.Truncate(fmt.Sprintf("Delete %s for good? y/n", c.Code), width))
+		foot = styleWarn.Render(output.Truncate(fmt.Sprintf("Delete %s for good? y/n", output.OneLine(c.Code)), width))
 	case t.busy:
 		foot = loading("the change")
 	case t.err != nil && len(t.list) > 0:

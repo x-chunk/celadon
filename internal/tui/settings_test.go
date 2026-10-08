@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func TestSettingsToggleAndType(t *testing.T) {
@@ -40,4 +43,25 @@ func TestSettingsToggleAndType(t *testing.T) {
 	if b := d.body("PATCH", "/v1/settings/actions"); b["prefix"] != "/" {
 		t.Errorf("prefix body = %v", b)
 	}
+}
+
+func TestSettingsDrawTheirNotesInColorWithoutGarbage(t *testing.T) {
+	old := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(old) })
+
+	d := newDriver(t)
+	d.api.ok("GET", "/v1/settings/retention", map[string]any{"mode": "keep", "can_ttl": false})
+	d.api.ok("GET", "/v1/settings/vault", map[string]any{"reveal_ttl_seconds": 60, "can_reveal_ttl": true})
+	d.api.ok("GET", "/v1/settings/actions", map[string]any{"prefix": ".", "can_use": true})
+	d.api.ok("GET", "/v1/settings/language", map[string]any{"effective": "en"})
+	d.open("Settings")
+	v := d.view()
+	if !strings.Contains(v, "\x1b[") {
+		t.Fatal("nothing was drawn in color")
+	}
+	if strings.Contains(v, "�") {
+		t.Errorf("the escapes of a style were sanitized onto the screen:\n%s", v)
+	}
+	d.wantView("(the plan does not open this)", "/ , ! $ # > ~")
 }

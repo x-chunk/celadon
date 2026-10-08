@@ -278,23 +278,25 @@ func (t *settingsTab) view(width, height int) string {
 	}
 	labelW := 24
 	for i := settingRow(0); i < rowCount; i++ {
-		label, value, locked := t.row(i)
+		label, value, note, locked := t.row(i)
 		// A blank line between the groups: retention, the vault,
 		// shortcuts, language.
 		if i == rowRevealTTL || i == rowPrefix || i == rowLanguage {
 			b.WriteString("\n")
 		}
-		cell := output.Truncate(output.OneLine(value), max(inner-labelW-2, 4))
-		if locked {
-			cell += styleFaint.Render("  (the plan does not open this)")
-		}
-		text := label + strings.Repeat(" ", max(labelW-output.Width(label), 1)) + cell
+		head := label + strings.Repeat(" ", max(labelW-output.Width(label), 1))
 		if t.editing && int(i) == t.cur.pos {
-			text = label + strings.Repeat(" ", max(labelW-output.Width(label), 1)) + t.input.View()
-			b.WriteString(text + "\n")
+			b.WriteString(head + t.input.View() + "\n")
 			continue
 		}
-		b.WriteString(line(text, inner, int(i) == t.cur.pos) + "\n")
+		if note != "" {
+			note = "   " + note
+		}
+		if locked {
+			note += "  (the plan does not open this)"
+		}
+		cell := output.Truncate(output.OneLine(value), max(inner-labelW-2, 4))
+		b.WriteString(lineWith(head+cell, note, inner, int(i) == t.cur.pos) + "\n")
 	}
 	b.WriteString("\n")
 	switch {
@@ -310,51 +312,52 @@ func (t *settingsTab) view(width, height int) string {
 	return pane("Settings", b.String(), width, height, true)
 }
 
-// row is what one setting shows: its label, its value, and whether the
-// plan keeps it shut.
-func (t *settingsTab) row(r settingRow) (label, value string, locked bool) {
+// row is what one setting shows: its label, its value as the API has it, a
+// note of celadon's own drawn faint after it, and whether the plan keeps it
+// shut.
+func (t *settingsTab) row(r settingRow) (label, value, note string, locked bool) {
 	const unknown = "…"
 	switch r {
 	case rowMode:
 		if t.retention == nil {
-			return "Full archive", unknown, false
+			return "Full archive", unknown, "", false
 		}
 		v := "keep — refuse the newest message"
 		if t.retention.Mode == teal.RetentionRotate {
 			v = "rotate — drop the oldest message"
 		}
-		return "Full archive", v, false
+		return "Full archive", v, "", false
 	case rowTTL:
 		if t.retention == nil {
-			return "Keep messages for", unknown, false
+			return "Keep messages for", unknown, "", false
 		}
-		return "Keep messages for", output.Seconds(t.retention.TTLSeconds), !t.retention.CanTTL
+		return "Keep messages for", output.Seconds(t.retention.TTLSeconds), "", !t.retention.CanTTL
 	case rowInChat:
 		if t.retention == nil {
-			return "Delete in chat too", unknown, false
+			return "Delete in chat too", unknown, "", false
 		}
-		return "Delete in chat too", output.Bool(t.retention.InChat), !t.retention.CanInChat
+		return "Delete in chat too", output.Bool(t.retention.InChat), "", !t.retention.CanInChat
 	case rowRevealTTL:
 		if t.vault == nil {
-			return "Revealed secret stays", unknown, false
+			return "Revealed secret stays", unknown, "", false
 		}
-		return "Revealed secret stays", output.Seconds(int64(t.vault.RevealTTLSeconds)), !t.vault.CanRevealTTL
+		return "Revealed secret stays", output.Seconds(int64(t.vault.RevealTTLSeconds)), "", !t.vault.CanRevealTTL
 	case rowPrefix:
 		if t.actions == nil {
-			return "Shortcut prefix", unknown, false
+			return "Shortcut prefix", unknown, "", false
 		}
-		return "Shortcut prefix", t.actions.Prefix + "   " + styleFaint.Render(strings.Join(actionPrefixes, " ")), !t.actions.CanUse
+		return "Shortcut prefix", t.actions.Prefix, strings.Join(actionPrefixes, " "), !t.actions.CanUse
 	case rowLanguage:
 		if t.language == nil {
-			return "Language", unknown, false
+			return "Language", unknown, "", false
 		}
 		v := output.Or(t.language.Effective)
 		if t.language.Chosen == "" {
 			v += " (auto, follows Telegram)"
 		}
-		return "Language", v, false
+		return "Language", v, "", false
 	}
-	return "", "", false
+	return "", "", "", false
 }
 
 func (t *settingsTab) hint(r settingRow) string {

@@ -59,6 +59,22 @@ func line(text string, width int, selected bool) string {
 	return text
 }
 
+// lineWith is line with a note after the text, for as much of the note as
+// the width leaves: faint, or in the highlight with the rest when selected.
+// The text is sanitized and the note is not, so a note is only ever what
+// celadon itself writes — styling the text first would have the sanitizer
+// take the style's escapes for an attack and print them.
+func lineWith(text, note string, width int, selected bool) string {
+	text = output.Truncate(output.OneLine(text), width)
+	room := width - output.Width(text)
+	note = output.Truncate(note, room)
+	if selected {
+		pad := room - output.Width(note)
+		return styleSelected.Render(text + note + strings.Repeat(" ", max(pad, 0)))
+	}
+	return text + styleFaint.Render(note)
+}
+
 // wrapText wraps sanitized text to width, breaking words only when a single
 // word is wider than the line.
 func wrapText(s string, width int) string {

@@ -66,6 +66,27 @@ func TestActionsCreateEditDelete(t *testing.T) {
 	}
 }
 
+func TestActionsDeleteOncePerConfirmation(t *testing.T) {
+	d := newDriver(t)
+	action := map[string]any{"id": 12, "name": "hi", "body": "Hi!"}
+	d.api.ok("GET", "/v1/actions", map[string]any{"prefix": ".", "actions": []any{action}, "quota": map[string]any{"limit": 25, "used": 1}})
+	d.api.ok("DELETE", "/v1/actions/12", map[string]any{})
+
+	d.open("Actions")
+	d.keys("d")
+	y := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}
+	_, first := d.m.Update(y)
+	// A key held down: the second y comes before the first is answered.
+	d.send(y)
+	d.keys("d")
+	d.send(y)
+	d.exec(first)
+	if n := len(d.api.called("DELETE", "/v1/actions/12")); n != 1 {
+		t.Errorf("one confirmation sent %d deletes", n)
+	}
+	d.wantView("Deleted.")
+}
+
 func TestActionsArgumentsAndTheBodyLimit(t *testing.T) {
 	d := newDriver(t)
 	action := map[string]any{"id": 12, "name": "order", "body": "Order [[ARG1]]", "min_args": 1, "media_type": "photo", "uses": 3}

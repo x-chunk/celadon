@@ -46,6 +46,7 @@ type actionsTab struct {
 	formFocus int
 	formErr   error
 	saving    bool
+	deleting  bool
 	notice    string
 
 	placeholders []teal.Placeholder
@@ -131,7 +132,8 @@ func (t *actionsTab) update(msg tea.Msg) tea.Cmd {
 		if msg.op != "action-delete" {
 			return nil
 		}
-		t.mode = actionsBrowse
+		t.deleting = false
+		t.notice = ""
 		if msg.err != nil {
 			t.err = msg.err
 			return nil
@@ -156,11 +158,15 @@ func (t *actionsTab) key(msg tea.KeyMsg) tea.Cmd {
 	case actionsConfirmDelete:
 		switch k {
 		case "y", "Y":
+			// Back to the list before the call leaves, so a second y — a
+			// key held down — does not send a second delete.
+			t.mode = actionsBrowse
 			a, ok := t.selected()
 			if !ok {
-				t.mode = actionsBrowse
 				return nil
 			}
+			t.deleting = true
+			t.notice = fmt.Sprintf("Deleting %q…", a.Name)
 			return call(t.be, "action-delete", 0, func(ctx context.Context, c *teal.Client) reply[ack] {
 				return c.Actions.Delete(ctx, a.ID)
 			})
@@ -209,7 +215,7 @@ func (t *actionsTab) key(msg tea.KeyMsg) tea.Cmd {
 			})
 		}
 	case "d", "delete":
-		if _, ok := t.selected(); ok {
+		if _, ok := t.selected(); ok && !t.deleting {
 			t.mode = actionsConfirmDelete
 		}
 	case "p":

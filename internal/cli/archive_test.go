@@ -181,14 +181,16 @@ func TestChatsAndMessages(t *testing.T) {
 	h.run("", "message", "view", "abc").wantCode(t, ExitUsage)
 }
 
-func TestPortraitWaitsForAPortraitUnderConstruction(t *testing.T) {
+func TestPortraitWaitsForAModelStillInTraining(t *testing.T) {
 	h := newHarness(t).loggedIn()
 	calls := 0
 	h.api.on("GET", "/v1/portraits/-100", func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		if calls == 1 {
 			w.Header().Set("Retry-After", "1")
-			refuse(w, http.StatusNotFound, "not_found", "portrait is being built")
+			refuseWith(w, http.StatusServiceUnavailable, map[string]any{
+				"code": "unavailable", "reason": "model_training", "message": "the model is being fitted",
+			})
 			return
 		}
 		answer(w, map[string]any{"chat_id": -100, "summary": "Writes long.", "archetype": map[string]any{"label": "The Essayist", "fit": 0.8}})
@@ -201,5 +203,19 @@ func TestPortraitWaitsForAPortraitUnderConstruction(t *testing.T) {
 	r = h.run("", "portrait", "--wait", "--", "-100").wantCode(t, ExitOK)
 	if !strings.Contains(r.stdout, "The Essayist (fit 80%)") || calls != 2 {
 		t.Errorf("stdout = %q after %d calls", r.stdout, calls)
+	}
+}
+
+func TestPortraitDoesNotWaitForAChatTooShort(t *testing.T) {
+	h := newHarness(t).loggedIn()
+	h.api.on("GET", "/v1/portraits/5", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		refuseWith(w, http.StatusNotFound, map[string]any{
+			"code": "not_found", "reason": "not_enough_history", "message": "not enough history",
+		})
+	})
+	r := h.run("", "portrait", "--wait", "5").wantCode(t, ExitError)
+	if !strings.Contains(r.stderr, "too short to portray") || h.api.calls() != 1 {
+		t.Errorf("stderr = %q after %d calls", r.stderr, h.api.calls())
 	}
 }

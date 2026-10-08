@@ -187,3 +187,20 @@ func TestNewMetricsAndExplainIt(t *testing.T) {
 		t.Error("a cancellation was marked unreachable")
 	}
 }
+
+func TestPortraitTraining(t *testing.T) {
+	training := &teal.Error{Code: teal.CodeUnavailable, StatusCode: 503, Reason: teal.ReasonModelTraining, RetryAfter: time.Minute}
+	if d, ok := PortraitTraining(fmt.Errorf("wrapped: %w", training)); !ok || d != time.Minute {
+		t.Errorf("PortraitTraining(training) = %s, %v", d, ok)
+	}
+	for _, err := range []error{
+		nil,
+		errors.New("plain"),
+		&teal.Error{Code: teal.CodeUnavailable, StatusCode: 503, Reason: teal.ReasonPortraitsDisabled},
+		&teal.Error{Code: teal.CodeNotFound, StatusCode: 404, Reason: teal.ReasonNotEnoughHistory, RetryAfter: time.Minute},
+	} {
+		if _, ok := PortraitTraining(err); ok {
+			t.Errorf("PortraitTraining(%v) said it is training", err)
+		}
+	}
+}

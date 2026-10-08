@@ -85,8 +85,10 @@ more than one line is stored with `celadon vault store --secret-file`.
 ## Insights
 
 At a Glance, and a chat's portrait: `/` and a chat id, or `p` on a chat in the
-Archive tab. A portrait still being built is asked for again when the API says
-to (at most every 30 seconds), and nothing is charged for the wait.
+Archive tab. A portrait whose model is still being fitted is asked for again
+when the API says to (at most every 30 seconds), and nothing is charged for the
+wait. A chat too short to portray, or whose other side never wrote, is refused
+until it grows, and the refusal says which.
 
 ## Settings
 

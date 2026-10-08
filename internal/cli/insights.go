@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.xchunk.org/teal"
 
+	"github.com/x-chunk/celadon/internal/api"
 	"github.com/x-chunk/celadon/internal/output"
 )
 
@@ -45,9 +46,13 @@ func newInsightsCmd(env *Env) *cobra.Command {
 	}
 }
 
-// portraitPoll caps how long one wait for a portrait under construction
-// lasts, whatever Retry-After says.
-const portraitPoll = 30 * time.Second
+// portraitPoll caps how long one wait for a portrait whose model is still
+// being fitted lasts, whatever the API asks for; portraitPause is how long
+// one lasts when the API does not say.
+const (
+	portraitPoll  = 30 * time.Second
+	portraitPause = 5 * time.Second
+)
 
 func newPortraitCmd(env *Env) *cobra.Command {
 	var wait bool
@@ -58,9 +63,11 @@ func newPortraitCmd(env *Env) *cobra.Command {
 		Long: `Read a whole conversation and describe the person on the other side: the
 archetype they fall into, the traits behind it, what they write about and when.
 
-A portrait that has not been built yet is refused with a time to come back;
---wait keeps asking until it is ready or --timeout runs out. Nothing is charged
-for an answer that was not given.
+A portrait whose model is still being fitted is refused with a time to come
+back; --wait keeps asking until it is ready or --timeout runs out. A chat too
+short to portray, or one whose other side never wrote, is refused until it
+grows, and a deployment with portraits switched off refuses them all. Nothing
+is charged for an answer that was not given.
 
 A group's chat id is negative; put -- before it, so it is not read as a flag.`,
 		Example: `  celadon portrait 1256738876
@@ -89,22 +96,29 @@ A group's chat id is negative; put -- before it, so it is not read as a flag.`,
 			})
 		},
 	}
-	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "wait for a portrait that is still being built")
+	cmd.Flags().BoolVarP(&wait, "wait", "w", false, "wait for a portrait whose model is still being fitted")
 	return cmd
 }
 
 func fetchPortrait(ctx context.Context, env *Env, c *teal.Client, chat int64, wait bool) (teal.Response[teal.Portrait], error) {
 	for {
 		r, err := c.Insights.Portrait(ctx, chat).Value()
-		e, ok := teal.AsError(err)
-		if !ok || e.Code != teal.CodeNotFound || e.RetryAfter <= 0 {
+		after, training := api.PortraitTraining(err)
+		if !training {
 			return r, err
 		}
 		if !wait {
-			return r, fmt.Errorf("the portrait is still being built: try again in %s, or pass --wait", output.Duration(e.RetryAfter))
+			when := "shortly"
+			if after > 0 {
+				when = "in " + output.Duration(after)
+			}
+			return r, fmt.Errorf("the portrait's model is still being fitted: try again %s, or pass --wait", when)
 		}
-		d := min(e.RetryAfter, portraitPoll)
-		env.Printer().Info("The portrait is being built; asking again in %s…", output.Duration(d))
+		d := portraitPause
+		if after > 0 {
+			d = min(after, portraitPoll)
+		}
+		env.Printer().Info("The portrait's model is being fitted; asking again in %s…", output.Duration(d))
 		t := time.NewTimer(d)
 		select {
 		case <-ctx.Done():

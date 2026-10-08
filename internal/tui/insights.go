@@ -12,12 +12,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"go.xchunk.org/teal"
 
+	"github.com/x-chunk/celadon/internal/api"
 	"github.com/x-chunk/celadon/internal/output"
 )
 
-// portraitRetryCap bounds one wait for a portrait under construction,
-// whatever Retry-After says.
-const portraitRetryCap = 30 * time.Second
+// portraitRetryCap bounds one wait for a portrait whose model is still being
+// fitted, whatever the API asks for; portraitRetryPause is one wait when the
+// API does not say.
+const (
+	portraitRetryCap   = 30 * time.Second
+	portraitRetryPause = 5 * time.Second
+)
 
 // insightsTab shows At a Glance and, for a chat, its portrait.
 type insightsTab struct {
@@ -34,7 +39,8 @@ type insightsTab struct {
 	ptErr    error
 	ptSeq    int
 	loading  bool
-	// retryAt is when a portrait still being built is asked for again.
+	// retryAt is when a portrait whose model is still being fitted is asked
+	// for again.
 	retryAt time.Time
 
 	vp      viewport.Model
@@ -107,10 +113,13 @@ func (t *insightsTab) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		t.loading = false
-		if e, ok := teal.AsError(msg.err); ok && e.Code == teal.CodeNotFound && e.RetryAfter > 0 {
-			// Not built yet: nothing was charged, and the API says when
-			// to come back.
-			wait := min(e.RetryAfter, portraitRetryCap)
+		if after, training := api.PortraitTraining(msg.err); training {
+			// The model is still being fitted: nothing was charged, and
+			// the API says when to come back.
+			wait := portraitRetryPause
+			if after > 0 {
+				wait = min(after, portraitRetryCap)
+			}
 			t.retryAt = time.Now().Add(wait)
 			seq := t.ptSeq
 			return tea.Tick(wait, func(time.Time) tea.Msg { return portraitRetryMsg{seq: seq} })
@@ -205,7 +214,7 @@ func (t *insightsTab) render(width int) string {
 	switch {
 	case !t.retryAt.IsZero() && t.portrait == nil:
 		left := max(time.Until(t.retryAt).Round(time.Second), 0)
-		b.WriteString(styleMuted.Render(fmt.Sprintf("The portrait is being built; asking again in about %s. Nothing is charged for the wait.", output.Duration(left))))
+		b.WriteString(styleMuted.Render(fmt.Sprintf("The portrait's model is being fitted; asking again in about %s. Nothing is charged for the wait.", output.Duration(left))))
 	case t.loading:
 		b.WriteString(loading("the portrait"))
 	case t.ptErr != nil:

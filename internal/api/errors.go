@@ -127,6 +127,18 @@ func Explain(err error, now time.Time) Problem {
 	return p
 }
 
+// PortraitTraining reports whether err is a portrait refused because its model
+// is still being fitted, and how long the API asked to be given — zero when
+// it did not say. Nothing is charged for it, and teal leaves the waiting to
+// its caller.
+func PortraitTraining(err error) (time.Duration, bool) {
+	e, ok := teal.AsError(err)
+	if !ok || e.Code != teal.CodeUnavailable || e.Reason != teal.ReasonModelTraining {
+		return 0, false
+	}
+	return e.RetryAfter, true
+}
+
 // forbiddenHint says what the account's plan does not open and, when there is
 // one to upgrade to, which plan does.
 func forbiddenHint(e *teal.Error) string {

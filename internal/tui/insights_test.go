@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -29,15 +30,19 @@ func TestArchiveChatSearchAndPortraitJump(t *testing.T) {
 	d.wantView("The Essayist (fit 80%)", "You have 12 messages.")
 }
 
-func TestPortraitRetriesWhileItIsBuilt(t *testing.T) {
+func TestPortraitRetriesWhileTheModelTrains(t *testing.T) {
 	d := newDriver(t)
 	d.api.ok("GET", "/v1/insights", map[string]any{"insights": []string{}})
 	calls := 0
 	d.api.on("GET", "/v1/portraits/5", func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		if calls == 1 {
+			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "1")
-			refuse(w, http.StatusNotFound, "not_found", "being built")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": map[string]any{
+				"code": "unavailable", "reason": "model_training", "message": "being fitted",
+			}})
 			return
 		}
 		answer(w, map[string]any{"chat_id": 5, "summary": "Short and fast.", "archetype": map[string]any{"label": "The Sprinter", "fit": 0.5}})

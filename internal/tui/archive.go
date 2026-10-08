@@ -88,7 +88,7 @@ func (t *archiveTab) keys() []keyHelp {
 	case t.focus == focusChats:
 		return []keyHelp{{"/", "search"}, {"enter", "search this chat"}, {"p", "portrait"}, {"[ ]", "page"}, {"→", "results"}, {"r", "reload"}}
 	default:
-		return []keyHelp{{"/", "search"}, {"enter", "open"}, {"[ ]", "page (billed)"}, {"c", "all chats"}, {"←", "chats"}}
+		return []keyHelp{{"/", "search"}, {"enter", "open"}, {"[ ]", "page"}, {"c", "all chats"}, {"←", "chats"}}
 	}
 }
 
@@ -103,21 +103,50 @@ func (t *archiveTab) loadChats(page int) tea.Cmd {
 	})
 }
 
-// search runs the query in force at a page. Every call is billed as one
+// search runs the query in force at a page. Every search is billed as one
 // query, so it only ever happens on a key the person pressed.
 func (t *archiveTab) search(page int) tea.Cmd {
-	t.searchSeq++
-	t.searching = true
-	t.resultsErr = nil
-	t.detail = nil
+	req := t.request(page)
+	return t.fetch(func(ctx context.Context, c *teal.Client) reply[teal.SearchResult] {
+		return c.Archive.Search(ctx, req)
+	})
+}
+
+// turn shows another page of the search in force. The pages of a query
+// already run are free for 30 minutes after it ran; one that has expired
+// since, or was dropped — the application keeps its 20 most recent — is run
+// again, and billed as the search it is.
+func (t *archiveTab) turn(page int) tea.Cmd {
+	if t.results == nil || t.results.QueryID == "" {
+		return t.search(page)
+	}
+	id, req := t.results.QueryID, t.request(page)
+	return t.fetch(func(ctx context.Context, c *teal.Client) reply[teal.SearchResult] {
+		turned := c.Archive.SearchPage(ctx, teal.SearchPageRequest{QueryID: id, Page: page})
+		if teal.IsCode(turned.Error(), teal.CodeNotFound) {
+			return c.Archive.Search(ctx, req)
+		}
+		return turned
+	})
+}
+
+// request is the query in force, at a page.
+func (t *archiveTab) request(page int) teal.SearchRequest {
 	req := teal.SearchRequest{Conditions: t.conds, Page: page}
 	if t.chat != nil {
 		id := t.chat.ID
 		req.Chat = &id
 	}
-	return call(t.be, "search", t.searchSeq, func(ctx context.Context, c *teal.Client) reply[teal.SearchResult] {
-		return c.Archive.Search(ctx, req)
-	})
+	return req
+}
+
+// fetch puts the results pane in wait for an answer to the search.
+func (t *archiveTab) fetch(fn func(context.Context, *teal.Client) reply[teal.SearchResult]) tea.Cmd {
+	t.searchSeq++
+	t.searching = true
+	t.resultsErr = nil
+	t.detail = nil
+	return call(t.be, "search", t.searchSeq, fn)
 }
 
 func (t *archiveTab) update(msg tea.Msg) tea.Cmd {
@@ -283,11 +312,11 @@ func (t *archiveTab) key(msg tea.KeyMsg) tea.Cmd {
 		t.resultCur.move(1, len(msgs))
 	case "]":
 		if t.results != nil && t.page+1 < t.results.Pages {
-			return t.search(t.page + 1)
+			return t.turn(t.page + 1)
 		}
 	case "[":
 		if t.results != nil && t.page > 0 {
-			return t.search(t.page - 1)
+			return t.turn(t.page - 1)
 		}
 	case "enter":
 		if len(msgs) > 0 {
@@ -318,7 +347,7 @@ func (t *archiveTab) view(width, height int) string {
 			top += "\n" + styleError.Render(output.Truncate(t.parseErr.Error(), width))
 		}
 	} else {
-		top = styleMuted.Render("Press / to search. Each search, and each page of one, is billed as a query.")
+		top = styleMuted.Render("Press / to search. Each search is billed as a query; turning its pages is free for 30 minutes.")
 	}
 	topH := lipgloss.Height(top)
 	bodyH := height - topH

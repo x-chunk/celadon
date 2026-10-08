@@ -11,7 +11,7 @@ celadon · Reports · credits · work                                  balance $
  …the active tab…
 ─────────────────────────────────────────────────────────────────────────────────
 cost $0.0005 · balance $4.1995 · credits
-/ search · enter open · [ ] page (billed) · c all chats · ← chats · ? help · q quit
+/ search · enter open · [ ] page · c all chats · ← chats · ? help · q quit
 ```
 
 The header shows the application, its billing mode, the profile and the
@@ -61,8 +61,10 @@ Chats on the left, matches on the right.
 A query is typed on one line: free words search the text, `field=value` and
 `field~part` are AND filters, `|field=value` is an OR filter, and double quotes
 keep spaces together — `invoice suser=ann |suser=bob "created~2026-09"`.
-Every search and every page of one is billed as a query, so one only runs when
-a key is pressed.
+Every search is billed as a query, so one only runs when a key is pressed.
+Turning its pages with `[` and `]` is free for 30 minutes after it ran; a query
+that has expired by then, or that the application no longer keeps (it keeps
+its 20 most recent), is run again at the page asked for, and billed.
 
 ## Actions
 

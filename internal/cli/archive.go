@@ -29,8 +29,9 @@ depend on the plan.`
 
 func newSearchCmd(env *Env) *cobra.Command {
 	var (
-		q    queryFlags
-		page int
+		q       queryFlags
+		page    int
+		queryID string
 	)
 	cmd := &cobra.Command{
 		Use:     "search [words...]",
@@ -38,15 +39,22 @@ func newSearchCmd(env *Env) *cobra.Command {
 		GroupID: groupArchive,
 		Long: "Search the archive and print one page of matches.\n\n" + queryHelp + `
 
-Every call is one query and is billed as one, and so is every page: under
-shared limits each spends one of the plan's daily searches.`,
+Every search is one query and is billed as one, whatever page it asks for:
+under shared limits each spends one of the plan's daily searches. Its answer
+names the query, and --query-id turns the query's other pages for free for 30
+minutes after it ran; the application keeps its 20 most recent queries.`,
 		Example: `  celadon search invoice
   celadon search --where suser=ann --where 'created=2026-09-01'
   celadon search refund --chat -1001234567890 --page 2
+  celadon search --query-id q_7f3a9c --page 3
   celadon search --where media=photo --or media=video -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if page < 1 {
 				return usageError(errors.New("--page starts at 1"))
+			}
+			queryID = strings.TrimSpace(queryID)
+			if queryID != "" && (len(args) > 0 || q.given()) {
+				return usageError(errors.New("--query-id turns the pages of a search already run: give it without words, filters or --chat"))
 			}
 			req, err := q.build(args, page-1)
 			if err != nil {
@@ -58,7 +66,16 @@ shared limits each spends one of the plan's daily searches.`,
 			}
 			ctx, cancel := env.Context(cmd, false)
 			defer cancel()
-			r, err := c.Archive.Search(ctx, req).Value()
+			var found reply[teal.SearchResult]
+			if queryID != "" {
+				found = c.Archive.SearchPage(ctx, teal.SearchPageRequest{QueryID: queryID, Page: page - 1})
+			} else {
+				found = c.Archive.Search(ctx, req)
+			}
+			r, err := found.Value()
+			if queryID != "" && teal.IsCode(err, teal.CodeNotFound) {
+				return fmt.Errorf("query %s can no longer be paged: its pages are free for 30 minutes after it ran, and the application keeps its 20 most recent queries; run the search again", queryID)
+			}
 			if err != nil {
 				return err
 			}
@@ -70,6 +87,9 @@ shared limits each spends one of the plan's daily searches.`,
 				} else {
 					p.Table([]string{"id", "chat", "from", "sent", "text"}, messageRows(env, res.Messages))
 					p.Info("page %d of %d · %d matches", res.Page+1, max(res.Pages, 1), res.Total)
+					if res.QueryID != "" && res.Page+1 < res.Pages {
+						p.Info("the next page, free for 30 minutes: celadon search --query-id %s --page %d", res.QueryID, res.Page+2)
+					}
 				}
 				p.Meta(r.Meta)
 				return nil
@@ -78,6 +98,7 @@ shared limits each spends one of the plan's daily searches.`,
 	}
 	q.register(cmd.Flags())
 	cmd.Flags().IntVar(&page, "page", 1, "which page of matches to show")
+	cmd.Flags().StringVar(&queryID, "query-id", "", "turn the pages of a search already run, for free (its answer names the query)")
 	return cmd
 }
 

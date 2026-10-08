@@ -89,8 +89,8 @@ func New(ctx context.Context, client *teal.Client, opts Options) *Model {
 		be:   be,
 		opts: opts,
 		now:  time.Now,
-		note: "Every call goes to " + opts.BaseURL + ". A search, each page of one and a portrait may be billed; " +
-			"the status line shows what the last call cost.",
+		note: "Every call goes to " + opts.BaseURL + ". A search and a portrait may be billed, while turning the pages of a " +
+			"search is free for 30 minutes; the status line shows what the last call cost.",
 	}
 	m.tabs = []tab{
 		newOverviewTab(be),

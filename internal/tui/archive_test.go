@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -42,4 +43,43 @@ func TestArchiveSearchAndMessageCard(t *testing.T) {
 	d.wantView("Edit history", "the invoce")
 	d.key(tea.KeyEsc)
 	d.wantView("Results")
+}
+
+func TestArchivePagesAreTurnedForFree(t *testing.T) {
+	d := newDriver(t)
+	d.api.ok("GET", "/v1/chats", map[string]any{"chats": []any{}, "total": 0})
+	page := func(n int) map[string]any {
+		return map[string]any{
+			"messages": []any{map[string]any{"id": 100 + n, "text": "match on page " + string(rune('1'+n)), "sender_username": "ann"}},
+			"total":    3, "page": n, "pages": 3, "query_id": "q1",
+		}
+	}
+	d.api.ok("POST", "/v1/messages/search", page(0))
+	d.api.ok("POST", "/v1/messages/search/page", page(1))
+
+	d.open("Archive")
+	d.keys("/")
+	d.keys("invoice")
+	d.key(tea.KeyEnter)
+	d.wantView("page 1/3", "match on page 1")
+
+	d.keys("]")
+	if b := d.body("POST", "/v1/messages/search/page"); b["query_id"] != "q1" || b["page"] != float64(1) {
+		t.Errorf("page body = %v", b)
+	}
+	if n := len(d.api.called("POST", "/v1/messages/search")); n != 1 {
+		t.Errorf("turning a page ran the search again: %d searches", n)
+	}
+	d.wantView("page 2/3", "match on page 2")
+
+	// A query that has expired is run again, at the page asked for.
+	d.api.on("POST", "/v1/messages/search/page", func(w http.ResponseWriter, _ *http.Request) {
+		refuse(w, http.StatusNotFound, "not_found", "no such query")
+	})
+	d.api.ok("POST", "/v1/messages/search", page(2))
+	d.keys("]")
+	if b := d.body("POST", "/v1/messages/search"); b["page"] != float64(2) {
+		t.Errorf("search body = %v", b)
+	}
+	d.wantView("page 3/3", "match on page 3")
 }

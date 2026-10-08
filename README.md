@@ -86,12 +86,15 @@ celadon search refund                                  # text contains "refund"
 celadon search --where suser=ann --where created=2026-09-01
 celadon search --where media=photo --or media=video    # OR joins to the filter before it
 celadon search refund --chat -1001234567890 --page 2
+celadon search --query-id q_7f3a9c --page 3            # another page of a search already run, free
 celadon count --where media=photo                      # the number only; spends no daily search
 celadon fields                                         # what a filter may name
 ```
 
 `field=value` matches the whole value and `field~value` a part of it. Every
-search, and every page of one, is billed as one query.
+search is billed as one query, whatever page it shows. Its answer names the
+query, and `--query-id` turns the query's other pages for free for 30 minutes
+after it ran (the application keeps its 20 most recent).
 
 `export` writes every match as one JSON document — to `--file`, to standard
 output when it is a pipe, or to `aether-export-<time>.json`. The file is

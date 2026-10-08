@@ -44,6 +44,11 @@ func (q *queryFlags) register(fs *pflag.FlagSet) {
 	fs.BoolVar(&q.exact, "exact", false, "match the words as the whole text rather than a part of it")
 }
 
+// given reports whether any of the flags was given.
+func (q *queryFlags) given() bool {
+	return len(q.conditions) > 0 || q.chat != "" || q.exact
+}
+
 // build turns the words and the flags into a request. The words, when there
 // are any, are one condition on the text and come first.
 func (q *queryFlags) build(words []string, page int) (teal.SearchRequest, error) {

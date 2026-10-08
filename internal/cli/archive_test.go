@@ -219,3 +219,42 @@ func TestPortraitDoesNotWaitForAChatTooShort(t *testing.T) {
 		t.Errorf("stderr = %q after %d calls", r.stderr, h.api.calls())
 	}
 }
+
+func TestSearchTurnsPagesForFreeByTheQueryID(t *testing.T) {
+	h := newHarness(t).loggedIn()
+	first := map[string]any{"messages": sampleSearch["messages"], "total": 37, "page": 0, "pages": 4, "per_page": 10, "query_id": "q_7f3a9c"}
+	h.api.ok("POST", "/v1/messages/search", first)
+	h.api.ok("POST", "/v1/messages/search/page", map[string]any{"messages": sampleSearch["messages"], "total": 37, "page": 2, "pages": 4, "query_id": "q_7f3a9c"})
+
+	r := h.run("", "search", "invoice").wantCode(t, ExitOK)
+	if !strings.Contains(r.stderr, "celadon search --query-id q_7f3a9c --page 2") {
+		t.Errorf("stderr = %q", r.stderr)
+	}
+
+	r = h.run("", "search", "--query-id", "q_7f3a9c", "--page", "3").wantCode(t, ExitOK)
+	last := h.api.last()
+	if last.Path != "/v1/messages/search/page" {
+		t.Fatalf("the page was turned at %s", last.Path)
+	}
+	if b := decodeBody(t, last.Body); b["query_id"] != "q_7f3a9c" || b["page"] != float64(2) || len(b) != 2 {
+		t.Errorf("page body = %v", b)
+	}
+	if !strings.Contains(r.stderr, "page 3 of 4") || !strings.Contains(r.stdout, "90210") {
+		t.Errorf("stdout = %q, stderr = %q", r.stdout, r.stderr)
+	}
+
+	calls := h.api.calls()
+	h.run("", "search", "invoice", "--query-id", "q_7f3a9c").wantCode(t, ExitUsage)
+	h.run("", "search", "--chat", "5", "--query-id", "q_7f3a9c").wantCode(t, ExitUsage)
+	if h.api.calls() != calls {
+		t.Error("a query id given with a query reached the API")
+	}
+
+	h.api.on("POST", "/v1/messages/search/page", func(w http.ResponseWriter, _ *http.Request) {
+		refuse(w, http.StatusNotFound, "not_found", "no such query")
+	})
+	r = h.run("", "search", "--query-id", "q_7f3a9c", "--page", "2").wantCode(t, ExitError)
+	if !strings.Contains(r.stderr, "run the search again") {
+		t.Errorf("stderr = %q", r.stderr)
+	}
+}

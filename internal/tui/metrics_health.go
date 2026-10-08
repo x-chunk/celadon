@@ -22,6 +22,7 @@ type metricsHealthTab struct {
 	info    *metrics.Info
 	err     error
 	seq     int
+	out     int // answers of the last check still out, as liveOut on the overview
 	checked time.Time
 	now     func() time.Time
 }
@@ -60,6 +61,7 @@ func (t *metricsHealthTab) check(withInfo bool) tea.Cmd {
 	if withInfo {
 		cmds = append(cmds, loadInfo(t.be, "health-info", seq))
 	}
+	t.out = len(cmds)
 	return tea.Batch(cmds...)
 }
 
@@ -67,6 +69,7 @@ func (t *metricsHealthTab) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case done[liveCheck]:
 		if msg.op == "health-live" && msg.seq == t.seq {
+			t.out--
 			t.checked = t.now()
 			if msg.err != nil {
 				t.err, t.live = msg.err, &liveCheck{}
@@ -77,16 +80,25 @@ func (t *metricsHealthTab) update(msg tea.Msg) tea.Cmd {
 			t.live = &lc
 		}
 	case done[metrics.Readiness]:
-		if msg.op == "health-ready" && msg.seq == t.seq && msg.err == nil {
-			r := msg.val
-			t.ready = &r
+		if msg.op == "health-ready" && msg.seq == t.seq {
+			t.out--
+			if msg.err == nil {
+				r := msg.val
+				t.ready = &r
+			}
 		}
 	case done[metrics.Info]:
-		if msg.op == "health-info" && msg.seq == t.seq && msg.err == nil {
-			info := msg.val
-			t.info = &info
+		if msg.op == "health-info" && msg.seq == t.seq {
+			t.out--
+			if msg.err == nil {
+				info := msg.val
+				t.info = &info
+			}
 		}
 	case tickMsg:
+		if t.out > 0 {
+			return nil
+		}
 		return t.check(t.info == nil)
 	case tea.KeyMsg:
 		if msg.String() == "r" {

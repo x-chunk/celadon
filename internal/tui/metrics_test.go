@@ -118,6 +118,35 @@ func TestMetricsTickOnlyReachesTheOpenTab(t *testing.T) {
 	}
 }
 
+func TestMetricsAnAnswerSlowerThanTheTickIsShown(t *testing.T) {
+	d, _ := newMetricsDriver(t)
+	for _, title := range []string{"Overview", "Health"} {
+		d.open(title)
+		tab := d.m.tabs[d.m.find(title)]
+		// The next tick comes while the round it started is still out.
+		slow := tab.update(tickMsg{})
+		if again := tab.update(tickMsg{}); again != nil {
+			t.Errorf("%s: a tick started a round while the last was still out", title)
+		}
+		d.api.on("GET", "/api/live", func(w http.ResponseWriter, _ *http.Request) {
+			io.WriteString(w, `{"at":"2026-09-25T12:00:02Z","values":{"process_cpu_percent":12.5}}`)
+		})
+		d.api.on("GET", "/healthz", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			io.WriteString(w, `{"ok":false}`)
+		})
+		d.exec(slow)
+		if title == "Overview" {
+			d.wantView("12.5%")
+		} else {
+			d.wantView("● unreachable")
+		}
+		if tab.update(tickMsg{}) == nil {
+			t.Errorf("%s: a tick after the answers came started nothing", title)
+		}
+	}
+}
+
 func TestMetricsHealth(t *testing.T) {
 	d, _ := newMetricsDriver(t)
 	d.api.on("GET", "/readyz", func(w http.ResponseWriter, _ *http.Request) {

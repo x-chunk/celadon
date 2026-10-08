@@ -29,6 +29,11 @@ type metricsOverviewTab struct {
 	err     error
 	infoSeq int
 	liveSeq int
+	// liveOut counts the answers of the live round still out. A tick starts
+	// no round while one is out: an answer to a round a later one replaced
+	// is dropped, so rounds that each outlast the tick would all be dropped
+	// and nothing would ever be shown.
+	liveOut int
 	ticks   int
 
 	// trails are the recent readings of each tile's metric, seeded from the
@@ -56,6 +61,7 @@ func (t *metricsOverviewTab) init() tea.Cmd {
 
 func (t *metricsOverviewTab) readLive() tea.Cmd {
 	t.liveSeq++
+	t.liveOut = 2
 	seq := t.liveSeq
 	return tea.Batch(
 		callMetrics(t.be, "overview-live", seq, func(ctx context.Context, c *metrics.Client) (metrics.Snapshot, *metrics.Meta, error) {
@@ -106,6 +112,7 @@ func (t *metricsOverviewTab) update(msg tea.Msg) tea.Cmd {
 		}
 	case done[metrics.Snapshot]:
 		if msg.op == "overview-live" && msg.seq == t.liveSeq {
+			t.liveOut--
 			if msg.err != nil {
 				t.err = msg.err
 				return nil
@@ -128,12 +135,18 @@ func (t *metricsOverviewTab) update(msg tea.Msg) tea.Cmd {
 			}
 		}
 	case done[metrics.Readiness]:
-		if msg.op == "overview-ready" && msg.seq == t.liveSeq && msg.err == nil {
-			r := msg.val
-			t.ready = &r
+		if msg.op == "overview-ready" && msg.seq == t.liveSeq {
+			t.liveOut--
+			if msg.err == nil {
+				r := msg.val
+				t.ready = &r
+			}
 		}
 	case tickMsg:
 		t.ticks++
+		if t.liveOut > 0 {
+			return nil
+		}
 		// The catalog grows as things first happen; read it again now and
 		// then so a new series is not missed.
 		if t.ticks%30 == 0 {

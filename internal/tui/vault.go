@@ -281,8 +281,8 @@ func (t *vaultTab) submit() tea.Cmd {
 		}
 	}
 	if t.menu.pos == opDeleteID {
-		if _, err := strconv.ParseInt(strings.TrimSpace(t.inputs[0].Value()), 10, 64); err != nil {
-			t.err = fmt.Errorf("the entry id is a number")
+		if _, ok := entryID(t.inputs[0].Value()); !ok {
+			t.err = fmt.Errorf("the entry id is the positive number Store named, e.g. #12")
 			return nil
 		}
 	}
@@ -336,13 +336,19 @@ func (t *vaultTab) run() tea.Cmd {
 			return c.Vault.Delete(ctx, teal.VaultDeleteRequest{Passphrase: v[0]})
 		})
 	case opDeleteID:
-		id, _ := strconv.ParseInt(strings.TrimSpace(v[0]), 10, 64)
+		id, _ := entryID(v[0])
 		return call(t.be, "vault-delete", seq, func(ctx context.Context, c *teal.Client) reply[ack] {
 			return c.Vault.DeleteByID(ctx, id)
 		})
 	}
 	t.busy = false
 	return nil
+}
+
+// entryID reads an entry id the way Store names it, with or without its #.
+func entryID(s string) (int64, bool) {
+	id, err := strconv.ParseInt(strings.TrimPrefix(strings.TrimSpace(s), "#"), 10, 64)
+	return id, err == nil && id > 0
 }
 
 func (t *vaultTab) view(width, height int) string {

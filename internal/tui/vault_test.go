@@ -108,6 +108,30 @@ func TestVaultDeleteAsksFirst(t *testing.T) {
 	d.wantView("Destroyed the entry")
 }
 
+func TestVaultDeletesByTheIDStoreNamed(t *testing.T) {
+	d := newDriver(t)
+	d.api.ok("DELETE", "/v1/vault/entries/12", map[string]any{})
+	d.open("Vault")
+	for range opDeleteID {
+		d.key(tea.KeyDown)
+	}
+	d.key(tea.KeyEnter)
+	d.keys("0")
+	d.key(tea.KeyEnter)
+	d.wantView("the entry id is the positive number Store named")
+	d.key(tea.KeyBackspace)
+	d.keys("#12")
+	d.key(tea.KeyEnter)
+	d.wantView("Destroy this entry?")
+	d.keys("y")
+	if len(d.api.called("DELETE", "/v1/vault/entries/12")) != 1 {
+		t.Fatal("the entry Store named #12 was not deleted")
+	}
+	if len(d.api.called("DELETE", "/v1/vault/entries/0")) != 0 {
+		t.Error("entry 0 was sent to be deleted")
+	}
+}
+
 func TestVaultExplainsAWrongPassphrase(t *testing.T) {
 	d := newDriver(t)
 	d.api.on("POST", "/v1/vault/entries/reveal", func(w http.ResponseWriter, _ *http.Request) {

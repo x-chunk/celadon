@@ -62,10 +62,10 @@ github.com/spf13/cobra v1.10.2/go.mod h1:7C1pvHqHw5A4vrJfjNwvOdzYu0Gml16OCs2GRiT
 github.com/spf13/pflag v1.0.9/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/pflag v1.0.10 h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
 github.com/spf13/pflag v1.0.10/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
-github.com/x-chunk/teal v0.0.0-20260908131854-3af8f8fb2893 h1:wufNyAodVySSFW2/CJnrINa8hZHyMmTBCLpafGn8XGc=
-github.com/x-chunk/teal v0.0.0-20260908131854-3af8f8fb2893/go.mod h1:pruC1C7GFrDFU6lcoht2JvnYWruoQzd5Wt3+uVzW8qM=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
+go.xchunk.org/teal v0.3.0 h1:DSjdOh3UGtlSlva1Urb/1rX4g10JIF1iKxdknTgfWVo=
+go.xchunk.org/teal v0.3.0/go.mod h1:jPFABB/Tb9B5HLE3oBXnVQZfgYa7jXB4kHulE5oh3ls=
 go.yaml.in/yaml/v3 v3.0.4 h1:tfq32ie2Jv2UxXFdLJdh3jXuOzWiL1fo0bu/FbuKpbc=
 go.yaml.in/yaml/v3 v3.0.4/go.mod h1:DhzuOOF2ATzADvBadXxruRBLzYTpT36CKvDb3+aBEFg=
 golang.org/x/exp v0.0.0-20231006140011-7918f672742d h1:jtJma62tbqLibJ5sFQz8bKtEM8rJBtfilJ2qTU199MI=

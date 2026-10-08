@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/iostreams"
 )

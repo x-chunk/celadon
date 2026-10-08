@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/api"
 	"github.com/x-chunk/celadon/internal/config"

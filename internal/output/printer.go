@@ -11,7 +11,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/iostreams"
 )

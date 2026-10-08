@@ -30,7 +30,7 @@
 // campaign is worse than an error.
 package admin
 
-import "github.com/x-chunk/teal"
+import "go.xchunk.org/teal"
 
 // DefaultBaseURL is used when no other base URL is configured. The admin API
 // is served on the same listener as the Plug-In API, so it is teal's.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/output"
 )

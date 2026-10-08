@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 
 	"github.com/x-chunk/celadon/internal/output"
 )
@@ -171,7 +171,7 @@ func newAppPricesCmd(env *Env) *cobra.Command {
 				var rates []string
 				for _, m := range modes {
 					r := pr.Rates[teal.BillingMode(m)]
-					rates = append(rates, fmt.Sprintf("%s %d/s (burst %d)", m, r.PerSecond, r.Burst))
+					rates = append(rates, fmt.Sprintf("%s %g/s (burst %d)", m, r.PerSecond, r.Burst))
 				}
 				p.Details([]output.KV{
 					{Key: "1 cent buys", Value: fmt.Sprintf("%d credits", pr.CreditsPerCent)},

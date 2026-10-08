@@ -12,7 +12,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 )
 
 const testKey = "aek_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcd"

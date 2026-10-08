@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 )
 
 func TestParseCondition(t *testing.T) {

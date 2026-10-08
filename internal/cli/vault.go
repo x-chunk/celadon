@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 )
 
 // maxSecret bounds a secret read from a file or standard input. The API has

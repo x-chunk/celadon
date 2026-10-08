@@ -7,7 +7,7 @@ import (
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 )
 
 // Sanitize makes text from the archive safe to write to a terminal.

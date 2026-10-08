@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/x-chunk/teal"
+	"go.xchunk.org/teal"
 )
 
 // TextField is the field the free words of a query search.

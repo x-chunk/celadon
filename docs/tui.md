@@ -100,6 +100,8 @@ until it grows, and the refusal says which.
 
 Move with the arrows. `enter` switches the archive's mode and the deletion in
 the chat, and opens a field for the retention window and the reveal timer
-(`7d`, `12h`, `90s`, `off`). The shortcut prefix and the language cycle with
-`←`/`→` through the values the API accepts. A setting the plan does not open is
-marked, and the API refuses a change to it.
+(`7d`, `12h`, `90s`, `off`). The retention window, the reveal timer, the
+shortcut prefix and the language cycle with `←`/`→` through the values the API
+accepts, which each row lists; it refuses any other. A setting the plan does
+not open is marked, and the API refuses a change to it, as it refuses every
+change from a key whose owner has not opened `settings:write` to it.

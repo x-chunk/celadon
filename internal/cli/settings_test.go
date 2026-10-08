@@ -9,15 +9,20 @@ import (
 
 func TestSettingsReadWithoutFlagsAndWriteWithThem(t *testing.T) {
 	h := newHarness(t).loggedIn()
-	retention := map[string]any{"mode": "rotate", "ttl_seconds": 604800, "can_ttl": true, "archive": map[string]any{"limit": 1000, "used": 10, "unit": "messages"}}
+	retention := map[string]any{"mode": "rotate", "ttl_seconds": 604800, "can_ttl": true, "ttl_choices": []int{0, 86400, 604800, 2592000}, "archive": map[string]any{"limit": 1000, "used": 10, "unit": "messages"}}
 	h.api.ok("GET", "/v1/settings/retention", retention)
 	h.api.ok("PATCH", "/v1/settings/retention", retention)
 	h.api.ok("PATCH", "/v1/settings/language", map[string]any{"effective": "en"})
 	h.api.ok("PATCH", "/v1/settings/vault", map[string]any{"reveal_ttl_seconds": 300})
 
 	r := h.run("", "settings", "retention").wantCode(t, ExitOK)
-	if h.api.last().Method != "GET" || !strings.Contains(r.stdout, "7d") {
+	if h.api.last().Method != "GET" || !strings.Contains(r.stdout, "7d") || !strings.Contains(r.stdout, "off, 1d, 7d, 30d") {
 		t.Errorf("%s, stdout = %q", h.api.last().Method, r.stdout)
+	}
+	h.api.ok("GET", "/v1/settings/vault", map[string]any{"reveal_ttl_seconds": 300, "reveal_ttl_choices": []int{30, 300}})
+	r = h.run("", "settings", "vault").wantCode(t, ExitOK)
+	if !strings.Contains(r.stdout, "default, 30s, 5m") {
+		t.Errorf("vault stdout = %q", r.stdout)
 	}
 
 	h.run("", "settings", "retention", "--mode", "rotate", "--ttl", "7d", "--in-chat=false").wantCode(t, ExitOK)

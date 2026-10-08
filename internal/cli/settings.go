@@ -26,7 +26,11 @@ func newSettingsCmd(env *Env) *cobra.Command {
 		GroupID: groupAccount,
 		Long: `Show and change the account's settings. Run a subcommand without flags to
 show that setting, and with flags to change it. Everything here is free on
-every billing mode.`,
+every billing mode.
+
+Any key may read the settings. One changes them only once its owner has opened
+settings:write to it, on the application's screen in the bot — a retention
+policy can delete messages out of real chats in Telegram.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return showAllSettings(cmd, env)
@@ -156,7 +160,9 @@ message, how long a message stays at all, and whether a message leaving the
 archive is deleted from Telegram too.
 
 The window and the deletion in the chat are paid settings: a plan that does not
-open one refuses the change rather than storing it quietly.`,
+open one refuses the change rather than storing it quietly. The window is one of
+the few the API allows, which reading the setting lists, and the fields given
+are applied together: a change refused on one of them changes none.`,
 		func(ctx context.Context, c *teal.Client) reply[teal.Retention] {
 			return c.Settings.Retention(ctx)
 		},
@@ -184,7 +190,7 @@ open one refuses the change rather than storing it quietly.`,
 		printRetention,
 	)
 	cmd.Flags().StringVar(&mode, "mode", "", "what a full archive does: keep (refuse the newest) or rotate (drop the oldest)")
-	cmd.Flags().StringVar(&ttl, "ttl", "", "drop messages older than this: 30d, 12h, or off")
+	cmd.Flags().StringVar(&ttl, "ttl", "", "drop messages older than this — one of the windows the command lists, such as 30d — or off")
 	cmd.Flags().BoolVar(&inChat, "in-chat", false, "also delete a message from Telegram when it leaves the archive")
 	cmd.Example = `  celadon settings retention
   celadon settings retention --mode rotate --ttl 90d
@@ -201,12 +207,27 @@ func printRetention(env *Env, r teal.Retention) {
 	case teal.RetentionRotate:
 		mode = "rotate — a full archive drops the oldest message"
 	}
-	env.Printer().Details([]output.KV{
+	pairs := []output.KV{
 		{Key: "Mode", Value: mode},
 		{Key: "Window", Value: output.Seconds(r.TTLSeconds) + planNote(r.CanTTL)},
-		{Key: "Delete in chat", Value: output.Bool(r.InChat) + planNote(r.CanInChat)},
-		{Key: "Archive", Value: output.Quota(r.Archive) + " " + r.Archive.Unit},
-	})
+	}
+	if len(r.TTLChoices) > 0 {
+		pairs = append(pairs, output.KV{Key: "Windows allowed", Value: spans(r.TTLChoices)})
+	}
+	env.Printer().Details(append(pairs,
+		output.KV{Key: "Delete in chat", Value: output.Bool(r.InChat) + planNote(r.CanInChat)},
+		output.KV{Key: "Archive", Value: output.Quota(r.Archive) + " " + r.Archive.Unit},
+	))
+}
+
+// spans lists a closed set of spans in seconds the way a person types them
+// back: "off, 1d, 7d".
+func spans[N int | int64](set []N) string {
+	parts := make([]string, len(set))
+	for i, n := range set {
+		parts[i] = output.Seconds(int64(n))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func planNote(open bool) string {
@@ -221,7 +242,8 @@ func newVaultSettingsCmd(env *Env) *cobra.Command {
 	cmd := settingCmd(env, "vault",
 		"Show or change how long a revealed secret stays in the chat",
 		`Show or change how long a decrypted vault message stays in the Telegram chat
-before the bot takes it back. "default" goes back to the plan's own timer.`,
+before the bot takes it back: one of the timers the API allows, which reading
+the setting lists, or "default" for the plan's own.`,
 		func(ctx context.Context, c *teal.Client) reply[teal.VaultSettings] {
 			return c.Settings.Vault(ctx)
 		},
@@ -241,15 +263,19 @@ before the bot takes it back. "default" goes back to the plan's own timer.`,
 		},
 		printVaultSettings,
 	)
-	cmd.Flags().StringVar(&revealTTL, "reveal-ttl", "", `how long a revealed secret stays: 30s, 5m, or "default"`)
+	cmd.Flags().StringVar(&revealTTL, "reveal-ttl", "", `how long a revealed secret stays — one of the timers the command lists, such as 5m — or "default"`)
 	return cmd
 }
 
 func printVaultSettings(env *Env, v teal.VaultSettings) {
-	env.Printer().Details([]output.KV{
+	pairs := []output.KV{
 		{Key: "Taken back after", Value: output.Seconds(int64(v.RevealTTLSeconds)) + planNote(v.CanRevealTTL)},
 		{Key: "Taken back", Value: output.Bool(v.AutoDeletes)},
-	})
+	}
+	if len(v.RevealTTLChoices) > 0 {
+		pairs = append(pairs, output.KV{Key: "Timers allowed", Value: "default, " + spans(v.RevealTTLChoices)})
+	}
+	env.Printer().Details(pairs)
 }
 
 func newActionSettingsCmd(env *Env) *cobra.Command {

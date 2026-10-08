@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -194,8 +195,7 @@ func (t *settingsTab) change(row settingRow, dir int) tea.Cmd {
 		if dir == 0 {
 			dir = 1
 		}
-		i := indexOf(actionPrefixes, t.actions.Prefix)
-		next := actionPrefixes[(i+dir+len(actionPrefixes))%len(actionPrefixes)]
+		next := step(actionPrefixes, t.actions.Prefix, dir)
 		return save(t, func(ctx context.Context, c *teal.Client) reply[teal.ActionSettings] {
 			return c.Settings.UpdateActions(ctx, teal.ActionSettingsUpdateRequest{Prefix: next})
 		})
@@ -207,15 +207,13 @@ func (t *settingsTab) change(row settingRow, dir int) tea.Cmd {
 			dir = 1
 		}
 		// The cycle runs through "auto" and then every supported code.
-		options := append([]string{""}, t.language.Supported...)
-		i := indexOf(options, t.language.Chosen)
-		next := options[(i+dir+len(options))%len(options)]
+		next := step(append([]string{""}, t.language.Supported...), t.language.Chosen, dir)
 		return save(t, func(ctx context.Context, c *teal.Client) reply[teal.Language] {
 			return c.Settings.UpdateLanguage(ctx, teal.LanguageUpdateRequest{Language: next})
 		})
 	case rowTTL, rowRevealTTL:
 		if dir != 0 {
-			return nil
+			return t.cycleSpan(row, dir)
 		}
 		t.editing = true
 		t.input.Reset()
@@ -224,6 +222,23 @@ func (t *settingsTab) change(row settingRow, dir int) tea.Cmd {
 			t.input.Placeholder = `30s, 5m or "default"`
 		}
 		return t.input.Focus()
+	}
+	return nil
+}
+
+// cycleSpan moves the retention window or the reveal timer to the next value
+// the API allows, once it has said which those are: any other is refused.
+func (t *settingsTab) cycleSpan(row settingRow, dir int) tea.Cmd {
+	switch {
+	case row == rowTTL && t.retention != nil && len(t.retention.TTLChoices) > 0:
+		next := step(t.retention.TTLChoices, t.retention.TTLSeconds, dir)
+		return t.saveRetention(teal.RetentionUpdateRequest{TTLSeconds: &next})
+	case row == rowRevealTTL && t.vault != nil && len(t.vault.RevealTTLChoices) > 0:
+		// Zero asks for the plan's own timer, and comes first.
+		next := step(append([]int{0}, t.vault.RevealTTLChoices...), t.vault.RevealTTLSeconds, dir)
+		return save(t, func(ctx context.Context, c *teal.Client) reply[teal.VaultSettings] {
+			return c.Settings.UpdateVault(ctx, teal.VaultSettingsUpdateRequest{RevealTTLSeconds: next})
+		})
 	}
 	return nil
 }
@@ -331,7 +346,7 @@ func (t *settingsTab) row(r settingRow) (label, value, note string, locked bool)
 		if t.retention == nil {
 			return "Keep messages for", unknown, "", false
 		}
-		return "Keep messages for", output.Seconds(t.retention.TTLSeconds), "", !t.retention.CanTTL
+		return "Keep messages for", output.Seconds(t.retention.TTLSeconds), spanList(t.retention.TTLChoices, ""), !t.retention.CanTTL
 	case rowInChat:
 		if t.retention == nil {
 			return "Delete in chat too", unknown, "", false
@@ -341,7 +356,7 @@ func (t *settingsTab) row(r settingRow) (label, value, note string, locked bool)
 		if t.vault == nil {
 			return "Revealed secret stays", unknown, "", false
 		}
-		return "Revealed secret stays", output.Seconds(int64(t.vault.RevealTTLSeconds)), "", !t.vault.CanRevealTTL
+		return "Revealed secret stays", output.Seconds(int64(t.vault.RevealTTLSeconds)), spanList(t.vault.RevealTTLChoices, "default"), !t.vault.CanRevealTTL
 	case rowPrefix:
 		if t.actions == nil {
 			return "Shortcut prefix", unknown, "", false
@@ -365,11 +380,11 @@ func (t *settingsTab) hint(r settingRow) string {
 	case rowMode:
 		return "What a full archive does with a new message. Enter switches."
 	case rowTTL:
-		return "Messages older than this leave the archive whether or not it is full. Enter to type a span, or off."
+		return "Messages older than this leave the archive whether or not it is full. ←/→ cycle through the windows the API allows; enter to type one, or off."
 	case rowInChat:
 		return "Whether a message leaving the archive is deleted from Telegram too. Enter switches."
 	case rowRevealTTL:
-		return "How long a secret revealed in Telegram stays in the chat before the bot takes it back. Enter to type a span."
+		return "How long a secret revealed in Telegram stays in the chat before the bot takes it back. ←/→ cycle through the timers the API allows; enter to type one."
 	case rowPrefix:
 		return "The character a shortcut is typed behind. ←/→ or enter cycle through the ones allowed."
 	case rowLanguage:
@@ -378,11 +393,31 @@ func (t *settingsTab) hint(r settingRow) string {
 	return ""
 }
 
-func indexOf(list []string, s string) int {
-	for i, v := range list {
-		if v == s {
-			return i
-		}
+// step moves dir places through a closed set from v, wrapping around; a v
+// that is not in the set moves to its first value, or its last going back.
+func step[T comparable](set []T, v T, dir int) T {
+	i := slices.Index(set, v)
+	switch {
+	case i >= 0:
+		return set[(i+dir%len(set)+len(set))%len(set)]
+	case dir < 0:
+		return set[len(set)-1]
 	}
-	return 0
+	return set[0]
+}
+
+// spanList is a closed set of spans as a note: "off 1d 7d", with first
+// before them when there is one.
+func spanList[N int | int64](set []N, first string) string {
+	if len(set) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(set)+1)
+	if first != "" {
+		parts = append(parts, first)
+	}
+	for _, n := range set {
+		parts = append(parts, output.Seconds(int64(n)))
+	}
+	return strings.Join(parts, " ")
 }

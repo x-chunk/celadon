@@ -45,6 +45,31 @@ func TestSettingsToggleAndType(t *testing.T) {
 	}
 }
 
+func TestSettingsCycleThroughTheSpansTheAPIAllows(t *testing.T) {
+	d := newDriver(t)
+	d.api.ok("GET", "/v1/settings/retention", map[string]any{"mode": "keep", "ttl_seconds": 0, "can_ttl": true, "ttl_choices": []int{0, 604800, 2592000}})
+	d.api.ok("PATCH", "/v1/settings/retention", map[string]any{"mode": "keep", "ttl_seconds": 2592000, "can_ttl": true, "ttl_choices": []int{0, 604800, 2592000}})
+	d.api.ok("GET", "/v1/settings/vault", map[string]any{"reveal_ttl_seconds": 30, "can_reveal_ttl": true, "reveal_ttl_choices": []int{30, 300}})
+	d.api.ok("PATCH", "/v1/settings/vault", map[string]any{"reveal_ttl_seconds": 300, "can_reveal_ttl": true, "reveal_ttl_choices": []int{30, 300}})
+	d.api.ok("GET", "/v1/settings/actions", map[string]any{"prefix": "."})
+	d.api.ok("GET", "/v1/settings/language", map[string]any{"effective": "en"})
+
+	d.open("Settings")
+	d.wantView("off 7d 30d", "default 30s 5m")
+
+	d.key(tea.KeyDown)
+	d.key(tea.KeyLeft) // off, going back, wraps to the longest window
+	if b := d.body("PATCH", "/v1/settings/retention"); b["ttl_seconds"] != float64(2592000) || len(b) != 1 {
+		t.Errorf("window body = %v", b)
+	}
+	d.key(tea.KeyDown)
+	d.key(tea.KeyDown)
+	d.key(tea.KeyRight)
+	if b := d.body("PATCH", "/v1/settings/vault"); b["reveal_ttl_seconds"] != float64(300) {
+		t.Errorf("timer body = %v", b)
+	}
+}
+
 func TestSettingsDrawTheirNotesInColorWithoutGarbage(t *testing.T) {
 	old := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)

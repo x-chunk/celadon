@@ -140,7 +140,9 @@ celadon settings language --auto
 
 A settings command without flags reads; with flags it writes only what was
 given — `--ttl off` switches the window off, leaving `--ttl` out leaves it
-alone.
+alone. Reading a setting lists the windows and timers the API allows, and it
+refuses any other. Any key may read the settings; changing them needs the key's
+owner to open `settings:write` to it on the application's screen in the bot.
 
 ### Administering a deployment
 

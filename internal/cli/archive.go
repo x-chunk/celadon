@@ -115,11 +115,16 @@ func messageRows(env *Env, msgs []teal.Message) [][]string {
 		if text == "" && m.MediaType != "" {
 			text = "[" + m.MediaType + "]"
 		}
+		if m.ReplyToID != 0 || m.ReplyToMessageID != 0 {
+			text = "↩ " + text
+		}
 		if m.Deleted {
 			text = "(deleted) " + text
 		}
-		if m.Versions > 1 {
-			text += fmt.Sprintf(" (edited ×%d)", m.Versions-1)
+		// Versions counts the texts a message no longer carries: one for
+		// each edit.
+		if m.Versions > 0 {
+			text += fmt.Sprintf(" (edited ×%d)", m.Versions)
 		}
 		if textWidth > 0 {
 			text = output.Truncate(text, textWidth)
@@ -127,19 +132,12 @@ func messageRows(env *Env, msgs []teal.Message) [][]string {
 		rows = append(rows, []string{
 			strconv.FormatInt(m.ID, 10),
 			strconv.FormatInt(m.Chat, 10),
-			sender(m),
+			output.Sender(m),
 			output.Time(m.CreatedAt),
 			text,
 		})
 	}
 	return rows
-}
-
-func sender(m teal.Message) string {
-	if m.SenderUsername != "" {
-		return "@" + m.SenderUsername
-	}
-	return strconv.FormatInt(m.Sender, 10)
 }
 
 func newCountCmd(env *Env) *cobra.Command {
@@ -414,13 +412,20 @@ not Telegram's message id, which is only unique inside a chat.`,
 			m, meta := r.Data, r.Meta
 			p := env.Printer()
 			return p.Result(m, func() error {
+				chat := strconv.FormatInt(m.Chat, 10)
+				if name := output.ChatName(m); name != "" {
+					chat += " · " + name
+				}
 				pairs := []output.KV{
 					{Key: "ID", Value: strconv.FormatInt(m.ID, 10)},
 					{Key: "Telegram id", Value: strconv.FormatInt(m.MessageID, 10)},
-					{Key: "Chat", Value: strconv.FormatInt(m.Chat, 10)},
-					{Key: "From", Value: sender(m)},
+					{Key: "Chat", Value: chat},
+					{Key: "From", Value: output.SenderFull(m)},
 					{Key: "To", Value: strconv.FormatInt(m.Receiver, 10)},
 					{Key: "Sent", Value: output.Time(m.CreatedAt)},
+				}
+				if reply := output.ReplyTo(m); reply != "" {
+					pairs = append(pairs, output.KV{Key: "Answers", Value: reply})
 				}
 				if m.MediaType != "" {
 					media := m.MediaType
@@ -430,7 +435,14 @@ not Telegram's message id, which is only unique inside a chat.`,
 					pairs = append(pairs, output.KV{Key: "Media", Value: media})
 				}
 				if m.Deleted {
-					pairs = append(pairs, output.KV{Key: "Deleted", Value: "yes — deleted in Telegram, kept in the archive"})
+					when := "deleted in Telegram"
+					if m.DeletedAt != 0 {
+						when += " " + output.Unix(m.DeletedAt)
+					}
+					pairs = append(pairs, output.KV{Key: "Deleted", Value: "yes — " + when + ", kept in the archive"})
+				}
+				if m.Versions > 0 {
+					pairs = append(pairs, output.KV{Key: "Edited", Value: fmt.Sprintf("%d× — `celadon message versions %d` shows every text", m.Versions, m.ID)})
 				}
 				p.Details(pairs)
 				if m.Text != "" {

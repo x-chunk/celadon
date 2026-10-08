@@ -2,6 +2,7 @@ package output
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -150,6 +151,57 @@ func Until(t, now time.Time) string {
 		return "now"
 	}
 	return "in " + Duration(d)
+}
+
+// Sender names who wrote a message: their @username, their name, or their
+// Telegram id when Telegram reported neither. It is what the sender typed
+// into Telegram, to be sanitized like the text.
+func Sender(m teal.Message) string {
+	switch {
+	case m.SenderUsername != "":
+		return "@" + m.SenderUsername
+	case strings.TrimSpace(m.SenderName) != "":
+		return m.SenderName
+	}
+	return strconv.FormatInt(m.Sender, 10)
+}
+
+// SenderFull is Sender with the name and the @username both, when Telegram
+// reported both.
+func SenderFull(m teal.Message) string {
+	if name := strings.TrimSpace(m.SenderName); name != "" && m.SenderUsername != "" {
+		return name + " (@" + m.SenderUsername + ")"
+	}
+	return Sender(m)
+}
+
+// ChatName names the conversation a message was archived in, as Telegram
+// reported it then — the name, then the @username — or is empty when it
+// reported neither.
+func ChatName(m teal.Message) string {
+	name := strings.TrimSpace(strings.TrimSpace(m.FirstName) + " " + strings.TrimSpace(m.LastName))
+	switch {
+	case name != "" && m.Username != "":
+		return name + " (@" + m.Username + ")"
+	case name != "":
+		return name
+	case m.Username != "":
+		return "@" + m.Username
+	}
+	return ""
+}
+
+// ReplyTo says what a message answers: the archived message, by the id it is
+// read back by, or Telegram's id of one the archive does not hold. It is
+// empty for a message that answers nothing.
+func ReplyTo(m teal.Message) string {
+	switch {
+	case m.ReplyToID != 0:
+		return "#" + strconv.FormatInt(m.ReplyToID, 10)
+	case m.ReplyToMessageID != 0:
+		return "Telegram message " + strconv.FormatInt(m.ReplyToMessageID, 10) + ", not in the archive"
+	}
+	return ""
 }
 
 // Money renders an amount as the API spelled it, or from its credits when

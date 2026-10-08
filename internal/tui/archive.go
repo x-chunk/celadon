@@ -84,7 +84,11 @@ func (t *archiveTab) keys() []keyHelp {
 	case t.focus == focusQuery:
 		return []keyHelp{{"enter", "search"}, {"esc", "cancel"}}
 	case t.detail != nil:
-		return []keyHelp{{"v", "edit history"}, {"↑/↓", "scroll"}, {"esc", "back"}}
+		keys := []keyHelp{{"v", "edit history"}}
+		if t.detail.answers() != 0 {
+			keys = append(keys, keyHelp{"r", "the message it answers"})
+		}
+		return append(keys, keyHelp{"↑/↓", "scroll"}, keyHelp{"esc", "back"})
 	case t.focus == focusChats:
 		return []keyHelp{{"/", "search"}, {"enter", "search this chat"}, {"p", "portrait"}, {"[ ]", "page"}, {"→", "results"}, {"r", "reload"}}
 	default:
@@ -244,6 +248,12 @@ func (t *archiveTab) key(msg tea.KeyMsg) tea.Cmd {
 				return call(t.be, "versions", t.detail.seq, func(ctx context.Context, c *teal.Client) reply[teal.VersionList] {
 					return c.Archive.Versions(ctx, id)
 				})
+			}
+		case "r":
+			// The message answered is read back by the same id as any
+			// other, onto a card of its own.
+			if id := t.detail.answers(); id != 0 {
+				return t.open(teal.Message{ID: id})
 			}
 		default:
 			var cmd tea.Cmd
@@ -423,10 +433,13 @@ func (t *archiveTab) resultsBody(width, height int) string {
 		if text == "" && m.MediaType != "" {
 			text = "[" + m.MediaType + "]"
 		}
+		if m.ReplyToID != 0 || m.ReplyToMessageID != 0 {
+			text = "↩ " + text
+		}
 		if m.Deleted {
 			text = "✗ " + text
 		}
-		row := fmt.Sprintf("%-14s %s  %s", output.Truncate(senderOf(m), 14), m.CreatedAt.Local().Format("01-02 15:04"), text)
+		row := fmt.Sprintf("%-14s %s  %s", output.Truncate(output.OneLine(output.Sender(m)), 14), m.CreatedAt.Local().Format("01-02 15:04"), text)
 		b.WriteString(line(row, width, i == t.resultCur.pos && t.focus == focusResults) + "\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -438,11 +451,18 @@ func (t *archiveTab) cardBody(width, height int) string {
 	if d.full != nil {
 		m = *d.full
 	}
+	chat := strconv.FormatInt(m.Chat, 10)
+	if name := output.ChatName(m); name != "" {
+		chat += " · " + name
+	}
 	pairs := []field{
-		{"From", senderOf(m)},
-		{"Chat", strconv.FormatInt(m.Chat, 10)},
+		{"From", output.SenderFull(m)},
+		{"Chat", chat},
 		{"Sent", output.Time(m.CreatedAt)},
 		{"Telegram id", strconv.FormatInt(m.MessageID, 10)},
+	}
+	if reply := output.ReplyTo(m); reply != "" {
+		pairs = append(pairs, field{"Answers", reply})
 	}
 	if m.MediaType != "" {
 		media := m.MediaType
@@ -452,7 +472,11 @@ func (t *archiveTab) cardBody(width, height int) string {
 		pairs = append(pairs, field{"Media", media})
 	}
 	if m.Deleted {
-		pairs = append(pairs, field{"Deleted", "in Telegram; kept in the archive"})
+		deleted := "in Telegram"
+		if m.DeletedAt != 0 {
+			deleted += " " + output.Unix(m.DeletedAt)
+		}
+		pairs = append(pairs, field{"Deleted", deleted + "; kept in the archive"})
 	}
 	var b strings.Builder
 	b.WriteString(fields(pairs, width) + "\n\n")
@@ -472,10 +496,10 @@ func (t *archiveTab) cardBody(width, height int) string {
 			}
 			b.WriteString(styleMuted.Render(label) + "\n" + wrapText(output.Or(v.Text), width) + "\n\n")
 		}
-	case m.Versions > 1:
+	case d.edits() > 0:
 		edits := "once"
-		if m.Versions > 2 {
-			edits = fmt.Sprintf("%d times", m.Versions-1)
+		if n := d.edits(); n > 1 {
+			edits = fmt.Sprintf("%d times", n)
 		}
 		b.WriteString("\n\n" + styleMuted.Render("Edited "+edits+" — press v for the history."))
 	}
@@ -488,9 +512,21 @@ func (t *archiveTab) cardBody(width, height int) string {
 	return d.vp.View()
 }
 
-func senderOf(m teal.Message) string {
-	if m.SenderUsername != "" {
-		return "@" + output.OneLine(m.SenderUsername)
+// edits is how many times the message on the card was edited. A search
+// counts the texts a message no longer carries and a read by id need not,
+// so the search's count stands when the read has none.
+func (d *messageCard) edits() int {
+	if d.full != nil && d.full.Versions > 0 {
+		return d.full.Versions
 	}
-	return strconv.FormatInt(m.Sender, 10)
+	return d.msg.Versions
+}
+
+// answers is the archive's id of the message the one on the card answers,
+// zero when it answers nothing the archive holds.
+func (d *messageCard) answers() int64 {
+	if d.full != nil && d.full.ReplyToID != 0 {
+		return d.full.ReplyToID
+	}
+	return d.msg.ReplyToID
 }

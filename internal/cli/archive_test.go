@@ -18,7 +18,7 @@ var sampleSearch = map[string]any{
 	"messages": []any{map[string]any{
 		"id": 90210, "message_id": 4471, "chat": -1001234567890, "sender": 1256738876,
 		"text": "the invoice \x1b[31mis attached", "sender_username": "ann",
-		"created_at": "2026-09-01T09:14:02Z", "versions": 2,
+		"created_at": "2026-09-01T09:14:02Z", "versions": 1, "reply_to_id": 90200,
 	}},
 	"total": 37, "page": 1, "pages": 4, "per_page": 10,
 }
@@ -54,7 +54,7 @@ func TestSearchBuildsTheQueryInOrder(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(r.stdout, "90210") || !strings.Contains(r.stdout, "@ann") || !strings.Contains(r.stdout, "(edited ×1)") {
+	if !strings.Contains(r.stdout, "90210") || !strings.Contains(r.stdout, "@ann") || !strings.Contains(r.stdout, "↩ the invoice") || !strings.Contains(r.stdout, "(edited ×1)") {
 		t.Errorf("stdout = %q", r.stdout)
 	}
 	if strings.Contains(r.stdout, "\x1b") {
@@ -160,7 +160,11 @@ func TestExportSaysWhenTheStreamWasCut(t *testing.T) {
 func TestChatsAndMessages(t *testing.T) {
 	h := newHarness(t).loggedIn()
 	h.api.ok("GET", "/v1/chats", map[string]any{"chats": []any{map[string]any{"id": -100, "title": "Ann", "messages": 12}}, "total": 1, "page": 1})
-	h.api.ok("GET", "/v1/messages/90210", map[string]any{"id": 90210, "chat": -100, "text": "line one\nline two", "sender_username": "ann"})
+	h.api.ok("GET", "/v1/messages/90210", map[string]any{
+		"id": 90210, "chat": -100, "text": "line one\nline two", "sender_username": "ann", "sender_name": "Ann Weber",
+		"first_name": "Ann", "last_name": "Weber", "username": "ann", "reply_to_message_id": 4470,
+		"deleted": true, "deleted_at": 1788000000,
+	})
 	h.api.ok("GET", "/v1/messages/90210/versions", map[string]any{"versions": []any{
 		map[string]any{"text": "now", "at": 1788000000, "current": true},
 		map[string]any{"text": "before", "at": 1787000000},
@@ -171,8 +175,10 @@ func TestChatsAndMessages(t *testing.T) {
 		t.Errorf("query = %q, stdout = %q", h.api.last().Query, r.stdout)
 	}
 	r = h.run("", "message", "view", "90210").wantCode(t, ExitOK)
-	if !strings.Contains(r.stdout, "line one\nline two") {
-		t.Errorf("stdout = %q", r.stdout)
+	for _, want := range []string{"line one\nline two", "-100 · Ann Weber (@ann)", "Ann Weber (@ann)", "Telegram message 4470, not in the archive", "deleted in Telegram 2026-"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, r.stdout)
+		}
 	}
 	r = h.run("", "msg", "versions", "90210").wantCode(t, ExitOK)
 	if !strings.Contains(r.stdout, "(current)") || !strings.Contains(r.stdout, "before") {

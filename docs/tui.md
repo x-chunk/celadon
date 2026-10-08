@@ -56,6 +56,7 @@ Chats on the left, matches on the right.
 | `c`          | drop the chat the search is narrowed to |
 | `p`          | the portrait of the selected chat, in Insights |
 | `v`          | on a card: the edit history |
+| `r`          | on a card: the message it answers, when the archive holds it |
 | `esc`        | close the card |
 
 A query is typed on one line: free words search the text, `field=value` and

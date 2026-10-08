@@ -55,7 +55,7 @@ func (t *overviewTab) load() tea.Cmd {
 			return c.App.Account(ctx)
 		}),
 		call(t.be, "overview", seq, func(ctx context.Context, c *teal.Client) reply[teal.Usage] {
-			return c.App.Usage(ctx, &teal.UsageRequest{Days: 30})
+			return c.App.Usage(ctx, &teal.UsageRequest{Days: 30, ByDay: true})
 		}),
 	)
 }
@@ -223,5 +223,35 @@ func (t *overviewTab) usageSection(width int) string {
 		name := op.Op + strings.Repeat(" ", opW-output.Width(op.Op))
 		b.WriteString(output.Truncate(fmt.Sprintf("%s  %8d calls  %s", name, op.Calls, output.Money(op.Credits)), width) + "\n")
 	}
+	if daily := dailySpend(*u); len(daily) > 1 {
+		label := "per day  "
+		b.WriteString(styleLabel.Render(label) + styleTitle.Render(output.Sparkline(daily, max(min(len(daily), width-len(label)), 1), 0)) + "\n")
+	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// dailySpend adds a window's day-by-day rows — one for each operation on
+// each day — up into the credits spent on each day, oldest first, with a
+// day nothing was billed on as zero.
+func dailySpend(u teal.Usage) []float64 {
+	from, errFrom := time.Parse(time.DateOnly, u.From)
+	to, errTo := time.Parse(time.DateOnly, u.To)
+	if errFrom != nil || errTo != nil || to.Before(from) || len(u.Days) == 0 {
+		return nil
+	}
+	n := int(to.Sub(from)/(24*time.Hour)) + 1
+	if n > 366 {
+		return nil
+	}
+	spent := make([]float64, n)
+	for _, row := range u.Days {
+		day, err := time.Parse(time.DateOnly, row.Day)
+		if err != nil {
+			continue
+		}
+		if i := int(day.Sub(from) / (24 * time.Hour)); i >= 0 && i < n {
+			spent[i] += float64(row.Credits.Credits)
+		}
+	}
+	return spent
 }

@@ -40,8 +40,9 @@ it.
 
 The application (billing mode, balance, what was funded and spent, the key's
 prefix), the plan behind the account, every quota as a bar that turns yellow
-at 80% and red when spent, and 30 days of spending by operation. `r`
-refreshes; the arrows scroll. Everything here is free.
+at 80% and red when spent, and 30 days of spending by operation, with a
+sparkline of what each day cost. `r` refreshes; the arrows scroll. Everything
+here is free.
 
 ## Archive
 

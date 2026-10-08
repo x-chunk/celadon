@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"go.xchunk.org/teal"
 )
 
 func TestOverviewLoadsOnStart(t *testing.T) {
@@ -28,4 +30,45 @@ func TestHelpAndASmallTerminal(t *testing.T) {
 
 	d.send(tea.WindowSizeMsg{Width: 40, Height: 10})
 	d.wantView("at least 60×16")
+}
+
+func TestOverviewDrawsTheSpendingOfEachDay(t *testing.T) {
+	d := newDriver(t)
+	credits := func(n int) map[string]any { return map[string]any{"credits": n} }
+	d.api.ok("GET", "/v1/usage", map[string]any{
+		"from": "2026-09-20", "to": "2026-09-25", "calls": 3, "credits": credits(3000),
+		"ops": []any{map[string]any{"op": "search:query", "calls": 3, "credits": credits(3000)}},
+		"days": []any{
+			map[string]any{"day": "2026-09-25", "op": "search:query", "calls": 2, "credits": credits(2000)},
+			map[string]any{"day": "2026-09-21", "op": "search:query", "calls": 1, "credits": credits(1000)},
+		},
+	})
+	d.keys("r")
+	if q := d.api.called("GET", "/v1/usage"); len(q) == 0 || !strings.Contains(q[len(q)-1].query, "by_day=true") {
+		t.Fatalf("usage was asked for without its days: %v", q)
+	}
+	d.wantView("per day")
+}
+
+func TestDailySpend(t *testing.T) {
+	u := teal.Usage{From: "2026-09-20", To: "2026-09-23", Days: []teal.UsageOp{
+		{Day: "2026-09-23", Op: "search:query", Credits: teal.Money{Credits: 500}},
+		{Day: "2026-09-23", Op: "messages:read", Credits: teal.Money{Credits: 250}},
+		{Day: "2026-09-21", Op: "search:query", Credits: teal.Money{Credits: 100}},
+		{Day: "2026-08-01", Op: "search:query", Credits: teal.Money{Credits: 999}},
+	}}
+	got := dailySpend(u)
+	want := []float64{0, 100, 0, 750}
+	if len(got) != len(want) {
+		t.Fatalf("dailySpend = %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("dailySpend = %v, want %v", got, want)
+			break
+		}
+	}
+	if dailySpend(teal.Usage{From: "2026-09-25", To: "2026-09-20"}) != nil {
+		t.Error("a window that ends before it starts was drawn")
+	}
 }

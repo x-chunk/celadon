@@ -116,12 +116,13 @@ func newAppUsageCmd(env *Env) *cobra.Command {
 					p.Table([]string{"operation", "calls", "units", "spent"}, usageRows(u.Ops))
 				}
 				if byDay && len(u.Days) > 0 {
+					// One row for each operation on each day, newest first.
 					p.Println()
 					rows := make([][]string, 0, len(u.Days))
 					for _, d := range u.Days {
-						rows = append(rows, []string{d.Day, fmt.Sprint(d.Calls), output.Money(d.Credits)})
+						rows = append(rows, []string{d.Day, d.Op, fmt.Sprint(d.Calls), fmt.Sprint(d.Units), output.Money(d.Credits)})
 					}
-					p.Table([]string{"day", "calls", "spent"}, rows)
+					p.Table([]string{"day", "operation", "calls", "units", "spent"}, rows)
 				}
 				p.Meta(meta)
 				return nil
@@ -131,6 +132,23 @@ func newAppUsageCmd(env *Env) *cobra.Command {
 	cmd.Flags().IntVar(&days, "days", 0, "how many days back to cover, 1-365 (default 30)")
 	cmd.Flags().BoolVar(&byDay, "by-day", false, "add a day-by-day breakdown")
 	return cmd
+}
+
+// rateText is a rate ceiling, which need not be a whole number per second.
+func rateText(r teal.Rate) string {
+	return fmt.Sprintf("%g/s (burst %d)", r.PerSecond, r.Burst)
+}
+
+// chargingLabel says when an operation's price is paid out of the
+// application's balance.
+func chargingLabel(c string) string {
+	switch c {
+	case teal.ChargingAlways:
+		return "every call"
+	case teal.ChargingOverflow:
+		return "past the plan"
+	}
+	return output.Or(c)
 }
 
 func usageRows(ops []teal.UsageOp) [][]string {
@@ -162,7 +180,7 @@ func newAppPricesCmd(env *Env) *cobra.Command {
 			return p.Result(pr, func() error {
 				rows := make([][]string, 0, len(pr.Prices))
 				for _, x := range pr.Prices {
-					rows = append(rows, []string{x.Op, output.Money(x.Price), x.Unit, x.Charging, output.Or(x.Limit)})
+					rows = append(rows, []string{x.Op, output.Money(x.Price), x.Unit, chargingLabel(x.Charging), output.Or(x.Limit)})
 				}
 				p.Table([]string{"operation", "price", "per", "charged", "stands in for"}, rows)
 				p.Println()
@@ -173,13 +191,22 @@ func newAppPricesCmd(env *Env) *cobra.Command {
 				sort.Strings(modes)
 				var rates []string
 				for _, m := range modes {
-					r := pr.Rates[teal.BillingMode(m)]
-					rates = append(rates, fmt.Sprintf("%s %g/s (burst %d)", m, r.PerSecond, r.Burst))
+					rates = append(rates, m+" "+rateText(pr.Rates[teal.BillingMode(m)]))
 				}
-				p.Details([]output.KV{
+				pairs := []output.KV{
 					{Key: "1 cent buys", Value: fmt.Sprintf("%d credits", pr.CreditsPerCent)},
 					{Key: "Rate limits", Value: output.Or(strings.Join(rates, " · "))},
-				})
+				}
+				if pr.AccountRate != nil {
+					pairs = append(pairs, output.KV{Key: "Per account", Value: rateText(*pr.AccountRate) + ", every application of an account together"})
+				}
+				if pr.GlobalRate != nil {
+					pairs = append(pairs, output.KV{Key: "Per deployment", Value: rateText(*pr.GlobalRate) + ", every application of every account together"})
+				}
+				if pr.QuotaTTLSeconds > 0 {
+					pairs = append(pairs, output.KV{Key: "Quotas re-read", Value: "every " + output.Seconds(int64(pr.QuotaTTLSeconds))})
+				}
+				p.Details(pairs)
 				p.Meta(meta)
 				return nil
 			})

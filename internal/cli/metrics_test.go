@@ -7,7 +7,9 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/x-chunk/celadon/internal/config"
 )
@@ -87,6 +89,35 @@ func TestMetricsHealth(t *testing.T) {
 	var rep healthReport
 	if err := json.Unmarshal([]byte(r.stdout), &rep); err != nil || rep.Ready || !rep.Live || !strings.HasPrefix(rep.Database, "unreachable") {
 		t.Errorf("not ready = %q (%v)", r.stdout, err)
+	}
+}
+
+func TestMetricsHealthWaits(t *testing.T) {
+	h := newHarness(t).metricsOn(true)
+	every := healthEvery
+	healthEvery = 10 * time.Millisecond
+	t.Cleanup(func() { healthEvery = every })
+
+	var asked atomic.Int32
+	h.api.on("GET", "/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if asked.Add(1) < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			io.WriteString(w, `{"ready":false,"database":"starting"}`)
+			return
+		}
+		io.WriteString(w, `{"ready":true,"database":"ok"}`)
+	})
+	r := h.run("", "metrics", "health", "--wait", "5s").wantCode(t, ExitOK)
+	if n := strings.Count(r.stderr, "not ready yet"); n != 2 {
+		t.Errorf("asked again %d times, want 2:\n%s", n, r.stderr)
+	}
+
+	// A listener that never answers is cut off by --wait, which says so
+	// rather than pointing at --timeout.
+	h.api.on("GET", "/healthz", func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	r = h.run("", "metrics", "health", "--wait", "200ms").wantCode(t, ExitError)
+	if !strings.Contains(r.stderr, "did not answer within --wait 200ms") || strings.Contains(r.stderr, "--timeout") {
+		t.Errorf("stderr = %q", r.stderr)
 	}
 }
 

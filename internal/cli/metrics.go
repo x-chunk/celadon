@@ -381,6 +381,9 @@ func checkHealth(ctx context.Context, c *metrics.Client) (healthReport, error) {
 	return h, nil
 }
 
+// healthEvery is how often health --wait asks again.
+var healthEvery = 2 * time.Second
+
 func newMetricsHealthCmd(env *Env) *cobra.Command {
 	var wait time.Duration
 	cmd := &cobra.Command{
@@ -421,13 +424,24 @@ keeps asking every two seconds until the process is ready or the time runs out.`
 					}
 					return printHealth(env, h)
 				}
-				env.Printer().Info("not ready yet — asking again in 2s…")
-				t := time.NewTimer(2 * time.Second)
+				if ctx.Err() == nil {
+					env.Printer().Info("not ready yet — asking again in %s…", output.Duration(healthEvery))
+				}
+				t := time.NewTimer(healthEvery)
 				select {
 				case <-ctx.Done():
 					t.Stop()
+					// Ctrl+C is a way of quitting, not a verdict on the
+					// listener.
+					if errors.Is(ctx.Err(), context.Canceled) {
+						return ctx.Err()
+					}
 					env.Printer().Warn("gave up waiting after %s", output.Duration(wait))
 					if err != nil && !h.Live {
+						if errors.Is(err, context.DeadlineExceeded) {
+							// Cut off by --wait, which --timeout cannot help.
+							return fmt.Errorf("the listener did not answer within --wait %s", output.Duration(wait))
+						}
 						return metricsCall(r, err)
 					}
 					return printHealth(env, h)

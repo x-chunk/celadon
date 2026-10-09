@@ -8,6 +8,7 @@ package iostreams
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,10 @@ import (
 // ErrNoTTY is returned when something has to be typed and there is nobody
 // at a terminal to type it.
 var ErrNoTTY = errors.New("no terminal to prompt on")
+
+// ErrInterrupted is what a read gives up with when the program is told to
+// stop while it waits. It is a cancellation.
+var ErrInterrupted = fmt.Errorf("interrupted while reading input: %w", context.Canceled)
 
 // Streams is one set of standard streams.
 type Streams struct {
@@ -38,6 +43,11 @@ type Streams struct {
 	// a real terminal and replaceable in tests.
 	secret func() (string, error)
 	width  func() int
+
+	// interrupt, once closed, ends a read that is waiting; restore puts the
+	// terminal back the way it was found, echo and all.
+	interrupt <-chan struct{}
+	restore   func()
 
 	lines *bufio.Reader
 }
@@ -69,6 +79,9 @@ func System() *Streams {
 		b, err := term.ReadPassword(fd)
 		return string(b), err
 	}
+	if state, err := term.GetState(fd); err == nil {
+		s.restore = func() { term.Restore(fd, state) }
+	}
 	return s
 }
 
@@ -96,6 +109,45 @@ func (s *Streams) SetWidth(w int) { s.width = func() int { return w } }
 // SetSecretReader replaces how a hidden line is read, for tests.
 func (s *Streams) SetSecretReader(fn func() (string, error)) { s.secret = fn }
 
+// SetInterrupt makes every read of input give up when done is closed —
+// when a signal has asked the program to stop. A signal does not end a read
+// of the terminal, and Ctrl+C at a prompt would otherwise wait for Enter.
+func (s *Streams) SetInterrupt(done <-chan struct{}) { s.interrupt = done }
+
+// await runs read unless the program is interrupted first. The read cannot
+// be called off, so it is left to the exit; the terminal is put back now,
+// since ReadPassword turns echo back on only when its line comes.
+func (s *Streams) await[T any](read func() (T, error)) (T, error) {
+	if s.interrupt == nil {
+		return read()
+	}
+	var zero T
+	select {
+	case <-s.interrupt:
+		// A read left behind may still hold the input: none starts after.
+		return zero, ErrInterrupted
+	default:
+	}
+	type answer struct {
+		v   T
+		err error
+	}
+	got := make(chan answer, 1)
+	go func() {
+		v, err := read()
+		got <- answer{v, err}
+	}()
+	select {
+	case a := <-got:
+		return a.v, a.err
+	case <-s.interrupt:
+		if s.restore != nil {
+			s.restore()
+		}
+		return zero, ErrInterrupted
+	}
+}
+
 // CanPrompt reports whether somebody can be asked something: input and the
 // error stream, where the question is written, are both a terminal.
 func (s *Streams) CanPrompt() bool { return s.InTTY && s.ErrTTY }
@@ -107,7 +159,7 @@ func (s *Streams) Secret(label string) (string, error) {
 		return "", ErrNoTTY
 	}
 	fmt.Fprint(s.Err, label)
-	v, err := s.secret()
+	v, err := s.await(s.secret)
 	fmt.Fprintln(s.Err)
 	if err != nil {
 		return "", fmt.Errorf("reading from the terminal: %w", err)
@@ -144,11 +196,13 @@ func (s *Streams) ReadLine() (string, error) {
 	if s.lines == nil {
 		s.lines = bufio.NewReader(s.In)
 	}
-	line, err := s.lines.ReadString('\n')
-	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
-		return "", err
-	}
-	return strings.TrimRight(line, "\r\n"), nil
+	return s.await(func() (string, error) {
+		line, err := s.lines.ReadString('\n')
+		if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+			return "", err
+		}
+		return strings.TrimRight(line, "\r\n"), nil
+	})
 }
 
 // ReadAll reads what is left of input, capped at limit bytes.
@@ -157,7 +211,7 @@ func (s *Streams) ReadAll(limit int64) ([]byte, error) {
 	if s.lines != nil {
 		r = s.lines
 	}
-	b, err := io.ReadAll(io.LimitReader(r, limit+1))
+	b, err := s.await(func() ([]byte, error) { return io.ReadAll(io.LimitReader(r, limit+1)) })
 	if err != nil {
 		return nil, err
 	}

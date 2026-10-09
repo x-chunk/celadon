@@ -2,6 +2,7 @@ package iostreams
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -69,6 +70,39 @@ func TestSecretOnATerminal(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "Passphrase: ") || strings.Contains(errOut.String(), "hunter2") {
 		t.Errorf("the prompt was %q", errOut.String())
+	}
+}
+
+func TestAnInterruptEndsAWaitingRead(t *testing.T) {
+	stop := make(chan struct{})
+	in, _ := io.Pipe() // input that never comes
+	s := Test(in, &bytes.Buffer{}, &bytes.Buffer{})
+	s.InTTY, s.ErrTTY = true, true
+	s.SetInterrupt(stop)
+	restored := 0
+	s.restore = func() { restored++ }
+	waiting := make(chan struct{})
+	s.SetSecretReader(func() (string, error) {
+		close(waiting)
+		select {} // a terminal read no signal ends
+	})
+	go func() {
+		<-waiting
+		close(stop)
+	}()
+
+	if _, err := s.Secret("Passphrase: "); !errors.Is(err, ErrInterrupted) || !errors.Is(err, context.Canceled) {
+		t.Errorf("Secret = %v", err)
+	}
+	if restored != 1 {
+		t.Errorf("the terminal was put back %d times, want once", restored)
+	}
+	// Nothing more is read once the program is stopping.
+	if _, err := s.Prompt("Base URL: "); !errors.Is(err, ErrInterrupted) {
+		t.Errorf("Prompt = %v", err)
+	}
+	if _, err := s.ReadAll(10); !errors.Is(err, ErrInterrupted) {
+		t.Errorf("ReadAll = %v", err)
 	}
 }
 

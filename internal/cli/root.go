@@ -328,6 +328,9 @@ const (
 
 // Execute runs the command line and returns the process's exit code.
 func Execute(ctx context.Context, env *Env, args []string) int {
+	// Ctrl+C reaches the program as a cancellation of ctx; a prompt waiting
+	// on the terminal has to be told.
+	env.IO.SetInterrupt(ctx.Done())
 	root := NewRootCmd(env)
 	root.SetArgs(args)
 	err := root.ExecuteContext(ctx)

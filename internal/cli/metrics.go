@@ -125,6 +125,7 @@ serves the listener to anybody who reaches it: log in with --no-token.`,
 
 			token := ""
 			if !noToken {
+				warnPlaintext(env, target, "metrics token")
 				if token, err = readMetricsToken(env, withToken); err != nil {
 					return err
 				}
@@ -335,6 +336,9 @@ refuses the token.`,
 			})
 			if err != nil {
 				return err
+			}
+			if st.Token != "" {
+				warnPlaintext(env, st.URL, "metrics token")
 			}
 			if code != ExitOK {
 				return silentError{code: code}

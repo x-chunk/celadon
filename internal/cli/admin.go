@@ -95,6 +95,11 @@ address for the admin API, for a deployment whose proxy serves it elsewhere.`,
 				}
 			}
 
+			// Where the check goes is where the stored profile will point,
+			// with --base-url on top when it was given.
+			target := firstNonEmpty(env.baseURL, profile.AdminBaseURL, profile.BaseURL, admin.DefaultBaseURL)
+			warnPlaintext(env, target, "admin token")
+
 			token, err := readAdminToken(env, withToken)
 			if err != nil {
 				return err
@@ -103,9 +108,6 @@ address for the admin API, for a deployment whose proxy serves it elsewhere.`,
 				return usageError(err)
 			}
 
-			// Where the check goes is where the stored profile will point,
-			// with --base-url on top when it was given.
-			target := firstNonEmpty(env.baseURL, profile.AdminBaseURL, profile.BaseURL, admin.DefaultBaseURL)
 			if !skipVerify {
 				ctx, cancel := env.Context(cmd, false)
 				defer cancel()
@@ -281,6 +283,9 @@ token or it is refused.`,
 			})
 			if err != nil {
 				return err
+			}
+			if st.Token != "" {
+				warnPlaintext(env, st.BaseURL, "admin token")
 			}
 			if st.State != stateValid && st.State != stateUnchecked {
 				return silentError{code: ExitAuth}

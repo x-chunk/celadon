@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/x-chunk/celadon/internal/config"
 	"github.com/x-chunk/celadon/internal/query"
 )
 
@@ -50,6 +51,14 @@ func parseChat(arg string) (int64, error) {
 		return 0, usageError(fmt.Errorf("invalid chat id %q: expected a non-zero number", arg))
 	}
 	return id, nil
+}
+
+// warnPlaintext says so when what goes to url — a key, a token — crosses
+// the network unencrypted.
+func warnPlaintext(env *Env, url, what string) {
+	if config.Plaintext(url) {
+		env.Printer().Warn("%s is plain http: the %s crosses the network unencrypted — use https unless every hop to it is one you trust", url, what)
+	}
 }
 
 // parseSeconds reads a span of time for a setting, as a usage error when it

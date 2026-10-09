@@ -97,6 +97,7 @@ profile, then "default". The first profile stored becomes the default.`,
 			if err := config.ValidateBaseURL(baseURL); err != nil {
 				return usageError(err)
 			}
+			warnPlaintext(env, baseURL, "key")
 			if authHeader != "" {
 				profile.AuthHeader = authHeader
 			}
@@ -332,6 +333,11 @@ Exits 4 when the active profile has no key or its key is refused.`,
 				p.Info("No profiles. Run `celadon auth login` to add one.")
 			} else {
 				printStatus(env, rows)
+			}
+			for _, row := range rows {
+				if row.Key != "" {
+					warnPlaintext(env, row.BaseURL, "key of profile "+row.Profile)
+				}
 			}
 			if getenv(config.EnvAPIKey) != "" {
 				p.Warn("$%s is set and overrides every stored key", config.EnvAPIKey)

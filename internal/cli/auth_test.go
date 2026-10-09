@@ -46,6 +46,39 @@ func TestAuthLoginStoresAVerifiedKey(t *testing.T) {
 	}
 }
 
+func TestPlainHTTPToAnotherHostIsWarnedOf(t *testing.T) {
+	h := newHarness(t)
+	t.Setenv(config.EnvAPIKey, "")
+	t.Setenv(config.EnvAdminToken, "")
+	t.Setenv(config.EnvMetricsToken, "")
+	t.Setenv(config.EnvMetricsURL, "")
+
+	r := h.run(testKey+"\n", "auth", "login", "--with-token", "--skip-verify", "--base-url", "http://aether.example.com", "-p", "lan").wantCode(t, ExitOK)
+	if !strings.Contains(r.stderr, "http://aether.example.com is plain http: the key crosses the network unencrypted") {
+		t.Errorf("login stderr = %q", r.stderr)
+	}
+	r = h.run("", "auth", "status", "--offline").wantCode(t, ExitOK)
+	if !strings.Contains(r.stderr, "the key of profile lan crosses the network unencrypted") {
+		t.Errorf("status stderr = %q", r.stderr)
+	}
+	r = h.run(testAdminToken+"\n", "admin", "login", "--with-token", "--skip-verify", "--base-url", "http://10.0.0.5:8080", "-p", "lan").wantCode(t, ExitOK)
+	if !strings.Contains(r.stderr, "the admin token crosses the network unencrypted") {
+		t.Errorf("admin login stderr = %q", r.stderr)
+	}
+	r = h.run(testMetricsToken+"\n", "metrics", "login", "--with-token", "--skip-verify", "--metrics-url", "http://10.0.0.5:9090", "-p", "lan").wantCode(t, ExitOK)
+	if !strings.Contains(r.stderr, "the metrics token crosses the network unencrypted") {
+		t.Errorf("metrics login stderr = %q", r.stderr)
+	}
+
+	// https, and plain http that never leaves the machine, say nothing.
+	for _, url := range []string{"https://aether.example.com", "http://127.0.0.1:8080", "http://localhost:8080"} {
+		r = h.run(testKey+"\n", "auth", "login", "--with-token", "--skip-verify", "--base-url", url, "-p", "safe").wantCode(t, ExitOK)
+		if strings.Contains(r.stderr, "plain http") {
+			t.Errorf("%s: stderr = %q", url, r.stderr)
+		}
+	}
+}
+
 func TestAuthLoginRefusesARejectedKey(t *testing.T) {
 	h := newHarness(t)
 	h.api.on("GET", "/v1/app", func(w http.ResponseWriter, _ *http.Request) {

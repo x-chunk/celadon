@@ -65,6 +65,24 @@ func TestValidateBaseURL(t *testing.T) {
 	}
 }
 
+func TestPlaintext(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"http://aether.example.com":    true,
+		"HTTP://10.0.0.5:8080/aether":  true,
+		"https://aether.example.com":   false,
+		"http://127.0.0.1:9090":        false,
+		"http://127.8.0.1":             false,
+		"http://[::1]:9090":            false,
+		"http://localhost:8080":        false,
+		"http://metrics.localhost":     false,
+		"http://localhost.example.com": true,
+	} {
+		if got := Plaintext(raw); got != want {
+			t.Errorf("Plaintext(%q) = %v, want %v", raw, got, want)
+		}
+	}
+}
+
 func TestMaskKey(t *testing.T) {
 	if got := MaskKey(testKey); got != "aek_AbCdEfGh…" {
 		t.Errorf("MaskKey = %q", got)

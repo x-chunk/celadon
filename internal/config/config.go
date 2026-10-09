@@ -17,6 +17,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -76,6 +77,23 @@ func ValidateBaseURL(raw string) error {
 		return fmt.Errorf("invalid base url %q: credentials do not belong in the url", raw)
 	}
 	return nil
+}
+
+// Plaintext reports whether what is sent to raw crosses a network
+// unencrypted: plain http to a host other than this machine. A loopback
+// address — where the metrics listener is published, where a tunnel ends —
+// never leaves it.
+func Plaintext(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(u.Scheme, "http") {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
 }
 
 // Profile is one deployment and one application on it. The key is not here:

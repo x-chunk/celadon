@@ -80,6 +80,10 @@ Admin and metrics tokens are kept exactly as keys are, in `admin/<profile>` and
   redirect anywhere else is refused, not followed: a 307 or 308 sends the
   request again, body and all — a vault passphrase, a secret being stored —
   and the `X-Aether-Key` header with it.
+- Plain `http://` to another machine is allowed, for a deployment on a
+  network you trust, but the logins and the status commands warn of it: the
+  key crosses the network unencrypted. A loopback address — where the metrics
+  listener is published, where a tunnel ends — is never warned of.
 
 `auth logout` deletes the key file. Aether keeps no copy it can show again: the
 way back is to regenerate the key in the bot, which retires the old one.

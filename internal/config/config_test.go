@@ -58,7 +58,10 @@ func TestValidateBaseURL(t *testing.T) {
 			t.Errorf("%q: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"", "example.com", "ftp://example.com", "https://", "https://u:p@example.com"} {
+	for _, bad := range []string{
+		"", "example.com", "ftp://example.com", "https://", "https://u:p@example.com",
+		"https://example.com/aether?tenant=1", "https://example.com/?", "https://example.com/#top",
+	} {
 		if err := ValidateBaseURL(bad); err == nil {
 			t.Errorf("%q was accepted", bad)
 		}

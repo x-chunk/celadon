@@ -76,6 +76,11 @@ func ValidateBaseURL(raw string) error {
 	if u.User != nil {
 		return fmt.Errorf("invalid base url %q: credentials do not belong in the url", raw)
 	}
+	// A path is a prefix every call is made under; a query would ride
+	// along only on the calls that have none of their own.
+	if strings.ContainsAny(raw, "?#") {
+		return fmt.Errorf("invalid base url %q: it takes no query or fragment", raw)
+	}
 	return nil
 }
 

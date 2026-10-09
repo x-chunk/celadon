@@ -38,6 +38,13 @@ func Explain(err error, now time.Time) Problem {
 		return Problem{Title: "the request timed out", Hint: "raise --timeout, or try again"}
 	}
 
+	var redirected *Redirected
+	if errors.As(err, &redirected) {
+		return Problem{
+			Title: redirected.Error(),
+			Hint:  "celadon sends a key or a token only to the scheme, host and port a profile names; if " + redirected.To + " is where the service now is, point the profile there",
+		}
+	}
 	var unreachable *Unreachable
 	if errors.As(err, &unreachable) {
 		return Problem{Title: fmt.Sprintf("could not reach %s at %s: %v", unreachable.Service, unreachable.URL, rootCause(err)), Hint: unreachable.Hint}

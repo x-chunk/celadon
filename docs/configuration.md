@@ -76,6 +76,10 @@ Admin and metrics tokens are kept exactly as keys are, in `admin/<profile>` and
   digits, `-` and `_`: nothing a path can be built out of.
 - Printed keys are masked to their first twelve characters, as the bot shows
   them, everywhere but `auth token`, whose whole purpose is to print one.
+- A key or token goes only to the scheme, host and port the profile names. A
+  redirect anywhere else is refused, not followed: a 307 or 308 sends the
+  request again, body and all — a vault passphrase, a secret being stored —
+  and the `X-Aether-Key` header with it.
 
 `auth logout` deletes the key file. Aether keeps no copy it can show again: the
 way back is to regenerate the key in the bot, which retires the old one.

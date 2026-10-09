@@ -38,9 +38,7 @@ func New(r config.Resolved, o Options) (*teal.Client, error) {
 		teal.WithUserAgent("celadon/" + version.Get().Version),
 		teal.WithHeaderAuth(AuthHeader(r.AuthHeader)),
 		teal.WithRetry(o.Retries, 500*time.Millisecond),
-	}
-	if o.HTTPClient != nil {
-		opts = append(opts, teal.WithHTTPClient(o.HTTPClient))
+		teal.WithHTTPClient(httpClient(o.HTTPClient, 30*time.Second)),
 	}
 	c, err := teal.New(r.Key, opts...)
 	if err != nil {
@@ -67,9 +65,7 @@ func NewAdmin(r config.AdminResolved, o Options) (*admin.Client, error) {
 		admin.WithBaseURL(r.BaseURL),
 		admin.WithUserAgent("celadon/" + version.Get().Version),
 		admin.WithRetry(o.Retries, 500*time.Millisecond),
-	}
-	if o.HTTPClient != nil {
-		opts = append(opts, admin.WithHTTPClient(o.HTTPClient))
+		admin.WithHTTPClient(httpClient(o.HTTPClient, 30*time.Second)),
 	}
 	c, err := admin.New(r.Token, opts...)
 	if err != nil {
@@ -86,9 +82,7 @@ func NewMetrics(r config.MetricsResolved, o Options) (*metrics.Client, error) {
 		metrics.WithToken(r.Token),
 		metrics.WithUserAgent("celadon/" + version.Get().Version),
 		metrics.WithRetry(o.Retries, 250*time.Millisecond),
-	}
-	if o.HTTPClient != nil {
-		opts = append(opts, metrics.WithHTTPClient(o.HTTPClient))
+		metrics.WithHTTPClient(httpClient(o.HTTPClient, 20*time.Second)),
 	}
 	c, err := metrics.New(opts...)
 	if err != nil {
@@ -125,7 +119,8 @@ func MarkUnreachable(err error, service, url, hint string) error {
 	if !errors.As(err, &urlErr) && !errors.As(err, &netErr) {
 		return err
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	var redirected *Redirected
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &redirected) {
 		return err
 	}
 	return &Unreachable{Service: service, URL: url, Hint: hint, Err: err}

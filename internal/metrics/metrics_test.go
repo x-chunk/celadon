@@ -236,6 +236,32 @@ func TestStream(t *testing.T) {
 	}
 }
 
+func TestAStreamEventIsBounded(t *testing.T) {
+	srv := listener(t, testToken, map[string]http.HandlerFunc{
+		"/api/stream": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			// Nine mebibytes of one line, and the end of it never comes.
+			io.WriteString(w, "data: ")
+			chunk := strings.Repeat("x", 1<<20)
+			for range 9 {
+				if _, err := io.WriteString(w, chunk); err != nil {
+					return
+				}
+			}
+			<-r.Context().Done()
+		},
+	})
+	c := newClient(t, srv.URL, WithToken(testToken))
+	st, _, err := c.Series.Stream(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Next(); err == nil || !strings.Contains(err.Error(), "over 8 MiB") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestScrape(t *testing.T) {
 	text := `# HELP db_queries_total Queries run, by operation.
 # TYPE db_queries_total counter

@@ -90,11 +90,18 @@ type Stream struct {
 // stream — a restart, usually. Open another.
 var ErrStreamClosed = errors.New("metrics: the stream ended")
 
+// maxEvent caps one event of the stream. A snapshot of every series is a
+// few hundred kilobytes; a listener that never ends a line or an event is
+// not read into memory without end.
+const maxEvent = 8 << 20
+
+var errEventTooLarge = fmt.Errorf("an event is over %d MiB", maxEvent>>20)
+
 // Next blocks until the next snapshot arrives.
 func (s *Stream) Next() (Snapshot, error) {
 	var data strings.Builder
 	for {
-		line, err := s.r.ReadString('\n')
+		line, err := s.line(maxEvent - data.Len())
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return Snapshot{}, ErrStreamClosed
@@ -118,6 +125,21 @@ func (s *Stream) Next() (Snapshot, error) {
 			data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 		// Comments, event names and ids carry nothing this reads.
+	}
+}
+
+// line reads one line of the stream, of at most limit bytes.
+func (s *Stream) line(limit int) (string, error) {
+	var b []byte
+	for {
+		chunk, err := s.r.ReadSlice('\n')
+		if len(b)+len(chunk) > limit {
+			return "", errEventTooLarge
+		}
+		b = append(b, chunk...)
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return string(b), err
+		}
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/x-chunk/celadon/internal/iostreams"
 	"github.com/x-chunk/celadon/internal/metrics"
+	"github.com/x-chunk/celadon/internal/output"
 )
 
 func TestMetricsOverview(t *testing.T) {
@@ -151,6 +152,33 @@ func TestMetricsWatch(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(r.stdout), "\n")
 	if len(lines) != 3 || !strings.Contains(lines[2], `"go_goroutines":300`) {
 		t.Errorf("json lines = %q", r.stdout)
+	}
+}
+
+func TestWatchFitsTheTerminal(t *testing.T) {
+	var out strings.Builder
+	h := newHarness(t)
+	streams := iostreamsTTY(&out)
+	streams.SetWidth(40)
+	env := &Env{IO: streams, ConfigDir: h.dir}
+	rows := []watchRow{
+		{label: "http_requests_total{route=\"search\",status=\"200\"}", key: "a", unit: metrics.UnitPerSec},
+		{label: "evil\x1b[31mred", key: "b", unit: metrics.UnitCount},
+	}
+	src := &fakeStream{snaps: []metrics.Snapshot{
+		{Values: map[string]float64{"a": 1234.5, "b": 7}},
+		{Values: map[string]float64{"a": 99, "b": 8}},
+	}}
+	watchLoop(t.Context(), env, metrics.Info{}, rows, src)
+	for line := range strings.SplitSeq(out.String(), "\n") {
+		line = strings.TrimPrefix(line, "\x1b[3A")
+		line = strings.TrimPrefix(line, "\x1b[2K")
+		if strings.Contains(line, "\x1b") {
+			t.Errorf("an escape sequence was drawn: %q", line)
+		}
+		if w := output.Width(line); w > 39 {
+			t.Errorf("a line is %d columns wide on a terminal of 40: %q", w, line)
+		}
 	}
 }
 

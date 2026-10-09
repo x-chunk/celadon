@@ -553,9 +553,13 @@ func watchLoop(ctx context.Context, env *Env, info metrics.Info, rows []watchRow
 	p := env.Printer()
 	redraw := env.IO.OutTTY && !p.JSONMode()
 	drawn := 0
+	// Labels are measured as they are drawn: sanitizing an escape sequence
+	// makes it visible, and wider.
+	labels := make([]string, len(rows))
 	labelW := 0
-	for _, rw := range rows {
-		labelW = max(labelW, output.Width(rw.label))
+	for i, rw := range rows {
+		labels[i] = output.OneLine(rw.label)
+		labelW = max(labelW, output.Width(labels[i]))
 	}
 	labelW = min(labelW, 48)
 	const trailLen = 40
@@ -596,15 +600,25 @@ func watchLoop(ctx context.Context, env *Env, info metrics.Info, rows []watchRow
 			line, _ := json.Marshal(map[string]any{"at": snap.At, "values": values})
 			fmt.Fprintln(env.IO.Out, string(line))
 		case redraw:
+			// Every line fits the terminal, short of its last column: a line
+			// that wraps takes two rows, and going back up one row a line
+			// would leave the frame drawn below the last one.
+			avail := env.IO.Width() - 1
+			if avail <= 0 {
+				avail = 79
+			}
+			lw := min(labelW, max(avail-16-8, 4))
+			sparkW := min(trailLen, max(avail-lw-16, 0))
 			if drawn > 0 {
 				fmt.Fprintf(env.IO.Out, "\x1b[%dA", drawn)
 			}
-			fmt.Fprintf(env.IO.Out, "\x1b[2K%s\n", output.Sanitize(snap.At.Local().Format("15:04:05"))+"  ctrl+c to stop")
-			for _, rw := range rows {
-				label := output.Truncate(rw.label, labelW)
-				label += strings.Repeat(" ", labelW-output.Width(label))
+			fmt.Fprintf(env.IO.Out, "\x1b[2K%s\n", output.Truncate(snap.At.Local().Format("15:04:05")+"  ctrl+c to stop", avail))
+			for i, rw := range rows {
+				label := output.Truncate(labels[i], lw)
+				label += strings.Repeat(" ", lw-output.Width(label))
 				v := rw.trail[len(rw.trail)-1]
-				fmt.Fprintf(env.IO.Out, "\x1b[2K%s  %12s  %s\n", output.Sanitize(label), output.MetricValue(v, rw.unit), output.Sparkline(rw.trail, trailLen, 0))
+				row := fmt.Sprintf("%s  %12s  %s", label, output.MetricValue(v, rw.unit), output.Sparkline(rw.trail, sparkW, 0))
+				fmt.Fprintf(env.IO.Out, "\x1b[2K%s\n", output.Truncate(row, avail))
 			}
 			drawn = len(rows) + 1
 		default:
